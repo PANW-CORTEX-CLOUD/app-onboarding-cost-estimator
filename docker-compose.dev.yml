@@ -1,0 +1,78 @@
+# Local stack — builds Dockerfile.dev, then bind-mounts the repo for live edit.
+# Usage: docker compose -f docker-compose.dev.yml up --build
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: cloud-connector-dev:local
+    working_dir: /app
+    volumes:
+      - .:/app
+      - cc_dev_node_modules:/app/node_modules
+      - cc_dev_api_nm:/app/packages/api/node_modules
+      - cc_dev_engine_nm:/app/packages/cost-engine/node_modules
+      - cc_dev_web_nm:/app/apps/web/node_modules
+    command:
+      [
+        "bash",
+        "-lc",
+        "pnpm install --frozen-lockfile && pnpm --filter @cloud-connector/api start",
+      ]
+    ports:
+      - "8787:8787"
+    environment:
+      NODE_ENV: development
+      # Non-interactive pnpm (named volumes can trigger "reinstall?" prompts).
+      CI: "true"
+      # Reachable from the web container on the Compose network.
+      HOST: "0.0.0.0"
+      PORT: "8787"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8787/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: cloud-connector-dev:local
+    working_dir: /app
+    volumes:
+      - .:/app
+      - cc_dev_node_modules:/app/node_modules
+      - cc_dev_api_nm:/app/packages/api/node_modules
+      - cc_dev_engine_nm:/app/packages/cost-engine/node_modules
+      - cc_dev_web_nm:/app/apps/web/node_modules
+    command:
+      [
+        "bash",
+        "-lc",
+        "pnpm install --frozen-lockfile && pnpm --filter @cloud-connector/web dev -- --host 0.0.0.0 --port 5173",
+      ]
+    ports:
+      - "5173:5173"
+    environment:
+      NODE_ENV: development
+      CI: "true"
+      # Vite proxy must use Compose DNS, not 127.0.0.1 (that would be the web container).
+      API_PROXY_TARGET: "http://api:8787"
+      VITE_DEV_HOST: "0.0.0.0"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  cc_dev_node_modules:
+  cc_dev_api_nm:
+  cc_dev_engine_nm:
+  cc_dev_web_nm:

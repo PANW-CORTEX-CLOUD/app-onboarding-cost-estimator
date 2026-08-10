@@ -1,0 +1,18 @@
+{
+  "id": "azure-multi-cloud-golden",
+  "provider": "azure",
+  "checkedAt": "2026-07-28",
+  "officialUrls": [
+    "https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-scalability",
+    "https://azure.microsoft.com/en-us/pricing/details/event-hubs/",
+    "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
+    "https://azure.microsoft.com/en-us/pricing/details/managed-disks/"
+  ],
+  "expected": {
+    "capacityUnits": 1,
+    "streamTotal": 30.830372266666664,
+    "storageTotal": 2.08,
+    "adsTotal": 6.575342465753424,
+    "snapshotGbMonths": 131.50684931506848
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "provider": "aws",
+  "region": "us-east-1",
+  "currency": "USD",
+  "meters": [
+    {
+      "meterId": "kinesis-shard-hour",
+      "unit": "shard-hour",
+      "unitPrice": 0.015,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/kinesis/data-streams/pricing/"
+    },
+    {
+      "meterId": "kinesis-put-payload-units",
+      "unit": "million-payload-units",
+      "unitPrice": 0.014,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/kinesis/data-streams/pricing/"
+    },
+    {
+      "meterId": "s3-standard-storage",
+      "unit": "GB-month",
+      "unitPrice": 0.023,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
+    },
+    {
+      "meterId": "ebs-snapshot-storage",
+      "unit": "GB-month",
+      "unitPrice": 0.05,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/ebs/pricing/"
+    },
+    {
+      "meterId": "ec2-outpost-scanner",
+      "unit": "hour",
+      "unitPrice": 0.0416,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/"
+    },
+    {
+      "meterId": "s3-data-retrieval-band",
+      "unit": "GB",
+      "unitPrice": 0.0004,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
+    },
+    {
+      "meterId": "ecr-data-transfer",
+      "unit": "GB",
+      "unitPrice": 0.09,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/ecr/pricing/"
+    },
+    {
+      "meterId": "lambda-scan-ops",
+      "unit": "million-request",
+      "unitPrice": 0.2,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/lambda/pricing/"
+    },
+    {
+      "meterId": "s3-put-10k",
+      "unit": "10k-ops",
+      "unitPrice": 0.005,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
+    },
+    {
+      "meterId": "s3-get-10k",
+      "unit": "10k-ops",
+      "unitPrice": 0.0004,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
+    },
+    {
+      "meterId": "aws-egress-gb",
+      "unit": "GB",
+      "unitPrice": 0.09,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/"
+    }
+  ]
+}

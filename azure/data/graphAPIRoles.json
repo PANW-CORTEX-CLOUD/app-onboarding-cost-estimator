@@ -1,0 +1,19 @@
+{
+  "common_roles": [
+    "dbb9058a-0e50-45d7-ae91-66909b5d4664",
+    "e321f0bb-e7f7-481e-bb28-e3b0b32d4bd0",
+    "498476ce-e0fe-48b0-b801-37ba7e2685c6",
+    "c74fd47d-ed3c-45c3-9a9e-b8676de685d2",
+    "df021288-bdef-4463-88db-98f22de89214",
+    "8e3bc81b-d2f3-4b7b-838c-32c88218d2f0",
+    "98830695-27a2-44f7-8c18-0c3ebc9698f6",
+    "c7fbd983-d9aa-4fa7-84b8-17382c103bc4",
+    "5b567255-7703-4780-807c-7be8301ae99b",
+    "b0afded3-3588-46d8-8b3d-9842eff778da",
+    "246dd0d5-5bd0-4def-940b-0421030a5b68",
+    "7ab1d382-f21e-4acd-a863-ba3e13f7da61"
+  ],
+  "public_only_roles": [
+    "d5fe8ce8-684c-4c83-a52c-46e882ce4be1"
+  ]
+}

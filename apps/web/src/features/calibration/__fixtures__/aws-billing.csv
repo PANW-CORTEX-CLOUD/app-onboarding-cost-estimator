@@ -1,0 +1,5 @@
+# AWS Cost Explorer style sample
+ProductName,UnblendedCost,Currency
+Amazon Kinesis,80.00,USD
+Amazon Simple Storage Service,20.25,USD
+Random Marketplace,9.00,USD

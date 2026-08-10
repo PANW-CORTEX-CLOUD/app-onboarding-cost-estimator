@@ -1,0 +1,18 @@
+# Spectral rules for openapi/openapi.yaml (package 15 TEST)
+extends:
+  - spectral:oas
+rules:
+  info-contact: off
+  operation-description: off
+  operation-tags: true
+  oas3-api-servers: true
+  operation-operationId: true
+  additional-properties-defined:
+    description: Request bodies with Create* schemas must disallow unknown fields
+    given: $.components.schemas[?(@.properties && (@property == 'CreateEstimateRequest' || @property == 'CreateProjectionRequest' || @property == 'RefreshRatesRequest'))]
+    then:
+      field: additionalProperties
+      function: schema
+      functionOptions:
+        schema:
+          const: false

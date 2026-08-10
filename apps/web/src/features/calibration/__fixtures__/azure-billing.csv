@@ -1,0 +1,5 @@
+# Azure Cost Management style sample
+MeterCategory,CostInBillingCurrency,Currency
+Event Hubs,120.50,USD
+Storage,30.00,USD
+Unknown SaaS,5.00,USD

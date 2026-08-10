@@ -1,0 +1,35 @@
+{
+  "if": {
+    "allOf": [
+      {
+        "field": "type",
+        "equals": "Microsoft.Resources/subscriptions"
+      }
+    ]
+  },
+  "then": {
+    "effect": "deployIfNotExists",
+    "details": {
+      "type": "Microsoft.Resources/resourceGroups",
+      "name": "${cortex_name}",
+      "deploymentScope": "Subscription",
+      "existenceScope": "Subscription",
+      "existenceCondition": {
+        "field": "tags.versionHash",
+        "equals": "${version_hash}"
+      },
+      "roleDefinitionIds": [
+        "${role_definition_id}"
+      ],
+      "deployment": {
+        "location": "${resource_group_location}",
+        "name": "${cortex_name}",
+        "properties": {
+          "mode": "Incremental",
+          "template": ${base64decode(policy_template)},
+          "parameters": ${policy_params}
+        }
+      }
+    }
+  }
+}

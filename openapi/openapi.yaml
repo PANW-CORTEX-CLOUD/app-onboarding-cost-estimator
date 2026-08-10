@@ -1,0 +1,556 @@
+openapi: 3.1.0
+info:
+  title: Cloud Connector Cost Estimator API
+  version: 0.2.0
+  description: |
+    Contract-first REST for multi-cloud Cortex customer-infra cost estimates.
+    Breaking changes bump `info.version` (package 15 EDGE).
+    Handlers must not expose raw provider OData / price-list payloads.
+servers:
+  - url: /v1
+tags:
+  - name: health
+  - name: capabilities
+  - name: rates
+  - name: estimates
+  - name: projections
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [health]
+      summary: Liveness / model version
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      tags: [capabilities]
+      summary: Capability → meter map for a provider
+      parameters:
+        - $ref: "#/components/parameters/ProviderParam"
+      responses:
+        "200":
+          description: Capability meter rows (sanitized)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilitiesResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+  /rates:
+    get:
+      operationId: getRates
+      tags: [rates]
+      summary: Resolve rate card (sanitized unitPrices only)
+      parameters:
+        - $ref: "#/components/parameters/ProviderParam"
+        - name: region
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Sanitized rates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatesResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+  /rates/refresh:
+    post:
+      operationId: refreshRates
+      tags: [rates]
+      summary: Force live rate refresh (rate-limited)
+      parameters:
+        - name: DeprecatedForce
+          in: query
+          required: false
+          deprecated: true
+          description: Deprecated no-op; use body.forceLive
+          schema:
+            type: boolean
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRatesRequest"
+      responses:
+        "200":
+          description: Refreshed sanitized rates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatesResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/Problem"
+  /estimates:
+    post:
+      operationId: createEstimate
+      tags: [estimates]
+      summary: Create monthly estimate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEstimateRequest"
+      responses:
+        "200":
+          description: Estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimateResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+  /projections:
+    post:
+      operationId: createProjection
+      tags: [projections]
+      summary: Project monthly estimate forward (uses core projectCosts)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectionRequest"
+      responses:
+        "200":
+          description: Projection series + table
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectionResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+components:
+  parameters:
+    ProviderParam:
+      name: provider
+      in: query
+      required: true
+      schema:
+        $ref: "#/components/schemas/CloudProvider"
+  schemas:
+    CloudProvider:
+      type: string
+      enum: [azure, aws, gcp]
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, modelVersion, service, apiVersion]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        modelVersion:
+          type: string
+        service:
+          type: string
+        apiVersion:
+          type: string
+    CapabilityMeterRow:
+      type: object
+      additionalProperties: false
+      required: [capability, meterId, confidence, sourceUrl]
+      properties:
+        capability:
+          type: string
+        meterId:
+          type: string
+        meterSku:
+          type: string
+        confidence:
+          type: string
+          enum: [High, Med, Low]
+        sourceUrl:
+          type: string
+          format: uri
+    CapabilitiesResponse:
+      type: object
+      additionalProperties: false
+      required: [provider, capabilities]
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/CapabilityMeterRow"
+    RatesResponse:
+      type: object
+      additionalProperties: false
+      required: [provider, region, currency, unitPrices, ratesAsOf, ratesSource, ageDays, modelVersion]
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        region:
+          type: string
+        currency:
+          type: string
+          enum: [USD]
+        unitPrices:
+          type: object
+          additionalProperties:
+            type: number
+        ratesAsOf:
+          type: string
+          format: date-time
+        ratesSource:
+          type: string
+          enum: [live, cache, fallback]
+        ageDays:
+          type: number
+        modelVersion:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        freshness:
+          type: object
+          additionalProperties: false
+          properties:
+            level:
+              type: string
+              enum: [fresh, warn, critical]
+            banner:
+              type: string
+              nullable: true
+            requiresAckBeforeExport:
+              type: boolean
+    RefreshRatesRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, region]
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        region:
+          type: string
+          minLength: 1
+        forceLive:
+          type: boolean
+          default: true
+    EstimateCapabilities:
+      type: object
+      additionalProperties: false
+      properties:
+        discovery:
+          type: boolean
+        auditLogs:
+          type: boolean
+        adsCloud:
+          type: boolean
+        adsOutpost:
+          type: boolean
+        dspm:
+          type: boolean
+        registry:
+          type: boolean
+        serverless:
+          type: boolean
+        egress:
+          type: boolean
+    EstimateVolume:
+      type: object
+      additionalProperties: false
+      properties:
+        accountCount:
+          type: number
+        monthlyActiveUsers:
+          type: number
+        logIntensity:
+          type: string
+          enum: [low, medium, high]
+        ingressGBPerDay:
+          type: number
+        peakMBps:
+          type: number
+        peakEventsPerSec:
+          type: number
+        byoManagedStream:
+          type: boolean
+        avgStoredGB:
+          type: number
+        vmCount:
+          type: number
+        avgUsedDiskGB:
+          type: number
+        scansPerMonth:
+          type: number
+        dataEstateGB:
+          type: number
+        pctScanned:
+          type: number
+        imageCount:
+          type: number
+        avgImageGB:
+          type: number
+        packageCount:
+          type: number
+        egressGB:
+          type: number
+        overrideStreamMetrics:
+          type: boolean
+          description: >
+            When true, lock explicit ingress/peak fields. When false/omitted,
+            derive stream volume from accountCount elasticities (fail-closed:
+            UI defaults must not silently ignore account scale).
+        assumedEventBytes:
+          type: number
+          description: >
+            Average audit event size in bytes for GB→events conversion (Azure EH
+            ingress). Must be > 0. Default 1024 in engine.
+    CreateEstimateRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, region, capabilities]
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        region:
+          type: string
+          minLength: 1
+        capabilities:
+          $ref: "#/components/schemas/EstimateCapabilities"
+        volume:
+          $ref: "#/components/schemas/EstimateVolume"
+        monthHours:
+          type: number
+    LineItem:
+      type: object
+      additionalProperties: false
+      required: [provider, capability, meterId, amount, confidence]
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        capability:
+          type: string
+        meterId:
+          type: string
+        amount:
+          type: number
+        confidence:
+          type: string
+          enum: [High, Med, Low]
+    EstimateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - provider
+        - lineItems
+        - totals
+        - confidence
+        - modelVersion
+        - ratesAsOf
+        - inputHash
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineItem"
+        totals:
+          type: object
+          additionalProperties: false
+          required: [expected]
+          properties:
+            expected:
+              type: number
+            low:
+              type: number
+            high:
+              type: number
+        confidence:
+          type: string
+          enum: [High, Med, Low]
+        modelVersion:
+          type: string
+        ratesAsOf:
+          type: string
+        inputHash:
+          type: string
+        ratesSource:
+          type: string
+          enum: [live, cache, fallback]
+        warnings:
+          type: array
+          items:
+            type: string
+        resolvedVolume:
+          type: object
+          additionalProperties: false
+          required:
+            - ingressGBPerDay
+            - peakMBps
+            - peakEventsPerSec
+            - overrideStreamMetrics
+          properties:
+            ingressGBPerDay:
+              type: number
+            peakMBps:
+              type: number
+            peakEventsPerSec:
+              type: number
+            overrideStreamMetrics:
+              type: boolean
+    CreateProjectionRequest:
+      type: object
+      additionalProperties: false
+      required: [monthlyExpected, months]
+      properties:
+        monthlyExpected:
+          type: number
+          minimum: 0
+        months:
+          type: integer
+          minimum: 1
+          maximum: 36
+          description: Horizon 1–36 months (default 12 in UI)
+        annualGrowthPercent:
+          type: number
+          description: >
+            Annual volume growth percent. Negative values floored at 0.
+            0 → flat series equal to monthly estimate. Growth applies to
+            volumeElastic meters; TU/Kinesis/PubSub use step functions.
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        monthlyLow:
+          type: number
+          minimum: 0
+          description: Optional low band for Low-confidence envelope
+        monthlyHigh:
+          type: number
+          minimum: 0
+          description: Optional high band for Low-confidence envelope
+        lineItems:
+          type: array
+          description: Estimate line items for stacked run-rate (same meters as createEstimate)
+          items:
+            $ref: "#/components/schemas/ProjectionLineItem"
+    ProjectionLineItem:
+      type: object
+      additionalProperties: false
+      required: [provider, capability, meterId, amount, confidence]
+      properties:
+        provider:
+          type: string
+        capability:
+          type: string
+        meterId:
+          type: string
+        amount:
+          type: number
+        confidence:
+          type: string
+          enum: [High, Med, Low]
+        volumeElastic:
+          type: boolean
+    ProjectionStackSlice:
+      type: object
+      additionalProperties: false
+      required: [provider, capability, meterId, amount, confidence]
+      properties:
+        provider:
+          type: string
+        capability:
+          type: string
+        meterId:
+          type: string
+        amount:
+          type: number
+        confidence:
+          type: string
+    ProjectionPoint:
+      type: object
+      additionalProperties: false
+      required: [month, expected, cumulative, volumeIndex]
+      properties:
+        month:
+          type: integer
+        expected:
+          type: number
+        cumulative:
+          type: number
+          description: Cumulative TCO through this month
+        volumeIndex:
+          type: number
+          description: Volume growth overlay index (1.0 at month 1)
+        low:
+          type: number
+        high:
+          type: number
+        stacks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectionStackSlice"
+    ProjectionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - series
+        - table
+        - total
+        - monthlyBaseline
+        - annualGrowthPercent
+        - modelVersion
+        - disclaimer
+      properties:
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectionPoint"
+        table:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectionPoint"
+        total:
+          type: number
+        monthlyBaseline:
+          type: number
+        annualGrowthPercent:
+          type: number
+        modelVersion:
+          type: string
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        disclaimer:
+          type: string
+          description: Must not imply reserved/CUD pricing
+    ProblemDetails:
+      type: object
+      additionalProperties: false
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+  responses:
+    Problem:
+      description: RFC 7807 Problem Details
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"

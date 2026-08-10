@@ -1,0 +1,136 @@
+/**
+ * Multi-cloud getRates(provider, region) facade (packages 04 + 16).
+ * live → 24h cache → fallback. forceLive skips cache. Never invents $0 meters.
+ * CORS: browser clients must use API proxy only (never call cloud price APIs directly).
+ */
+import type { CloudProvider, RateCard } from "../../core/models/estimate.types.ts";
+import type { RatesAdapter } from "../../core/ports/rates-adapter.interface.ts";
+import {
+  evaluateRatesFreshness,
+  type RatesFreshness,
+} from "../../core/rates/age-days.ts";
+import { createAzureRatesAdapter } from "../azure/azure-rates-adapter.ts";
+import { createAwsRatesAdapter } from "../aws/aws-rates-adapter.ts";
+import { createGcpRatesAdapter } from "../gcp/gcp-rates-adapter.ts";
+import type { RatesResult } from "./fallback-schema.ts";
+import {
+  createRatesCache,
+  defaultRatesCache,
+  ratesCacheKey,
+  type RatesCache,
+} from "./rates-cache.ts";
+
+export type GetRatesOptions = {
+  adapters?: Partial<Record<CloudProvider, RatesAdapter>>;
+  /** Skip cache and hit adapter (refreshRates AC). */
+  forceLive?: boolean;
+  /** Inject cache (tests). Default: process-wide 24h cache. */
+  cache?: RatesCache;
+  now?: Date;
+};
+
+const defaultAdapters = (): Record<CloudProvider, RatesAdapter> => ({
+  azure: createAzureRatesAdapter(),
+  aws: createAwsRatesAdapter(),
+  gcp: createGcpRatesAdapter(),
+});
+
+function withFreshness(
+  result: RatesResult,
+  now: Date,
+  ratesSource: RatesResult["ratesSource"] = result.ratesSource,
+): RatesResult {
+  const freshness: RatesFreshness = evaluateRatesFreshness(
+    result.rates.capturedAt,
+    ratesSource,
+    now,
+  );
+  const warnings = [...(result.warnings ?? [])];
+  if (freshness.banner && !warnings.includes(freshness.banner)) {
+    warnings.push(freshness.banner);
+  }
+  return {
+    ...result,
+    ratesSource,
+    ageDays: freshness.ageDays,
+    warnings,
+    freshness,
+  };
+}
+
+/**
+ * Resolve rates for a provider + region.
+ * Cache hit → ratesSource "cache" (skips network). Expired → refetch.
+ * API failure inside adapters → fallback + stale banner via freshness.
+ */
+export async function getRates(
+  provider: string,
+  region: string,
+  opts: GetRatesOptions = {},
+): Promise<RatesResult> {
+  const now = opts.now ?? new Date();
+  const cache = opts.cache ?? defaultRatesCache;
+  const adapters = { ...defaultAdapters(), ...opts.adapters };
+
+  if (provider !== "azure" && provider !== "aws" && provider !== "gcp") {
+    const rates: RateCard = {
+      provider: "azure",
+      region: region || "unknown",
+      currency: "USD",
+      unitPrices: {},
+      capturedAt: new Date(0).toISOString(),
+    };
+    return withFreshness(
+      {
+        rates,
+        ratesSource: "fallback",
+        ageDays: Number.POSITIVE_INFINITY,
+        warnings: [
+          `unknown provider '${provider}'; returning empty RateCard (no invented $0 meters)`,
+        ],
+      },
+      now,
+      "fallback",
+    );
+  }
+
+  const key = ratesCacheKey(provider, region);
+
+  if (!opts.forceLive) {
+    const hit = cache.get(key, now.getTime());
+    if (hit) {
+      return withFreshness(hit, now, "cache");
+    }
+  }
+
+  const result = await adapters[provider].getRates(region);
+  const normalized: RatesResult = {
+    ...result,
+    warnings: result.warnings ?? [],
+  };
+
+  // EDGE: never invent $0 for missing meters — empty unitPrices only when
+  // adapter explicitly returned fallback-empty (unknown provider path above).
+  for (const [meterId, price] of Object.entries(normalized.rates.unitPrices)) {
+    if (typeof price !== "number" || !Number.isFinite(price) || price < 0) {
+      throw new Error(
+        `partial/invalid meter '${meterId}' — fail closed (no invented $0)`,
+      );
+    }
+  }
+
+  cache.set(key, normalized, now.getTime());
+  return withFreshness(normalized, now, normalized.ratesSource);
+}
+
+export function lookupUnitPrice(
+  rates: RateCard,
+  meterId: string,
+): number | undefined {
+  // Explicit undefined — never coerce missing meters to $0
+  if (!(meterId in rates.unitPrices)) return undefined;
+  return rates.unitPrices[meterId];
+}
+
+export { createRatesCache, defaultRatesCache, ratesCacheKey };
+export type { RatesCache };

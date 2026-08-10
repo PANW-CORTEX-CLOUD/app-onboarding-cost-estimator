@@ -1,0 +1,27 @@
+{
+  "name": "@cloud-connector/cost-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-cloud Cortex customer-infra cost engine (pure TypeScript)",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

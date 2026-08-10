@@ -1,0 +1,17 @@
+{
+  "id": "aws-multi-cloud-golden",
+  "provider": "aws",
+  "checkedAt": "2026-07-28",
+  "officialUrls": [
+    "https://aws.amazon.com/kinesis/data-streams/pricing/",
+    "https://aws.amazon.com/s3/pricing/",
+    "https://aws.amazon.com/ebs/pricing/"
+  ],
+  "expected": {
+    "capacityUnits": 1,
+    "streamTotal": 11.128607445333334,
+    "storageTotal": 2.3,
+    "adsTotal": 6.575342465753424,
+    "snapshotGbMonths": 131.50684931506848
+  }
+}

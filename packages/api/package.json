@@ -1,0 +1,32 @@
+{
+  "name": "@cloud-connector/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Hono REST adapter for cost-engine (OpenAPI-validated)",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "start": "node --experimental-strip-types src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cloud-connector/cost-engine": "workspace:*",
+    "@hono/node-server": "^2.0.12",
+    "@hono/swagger-ui": "^0.6.1",
+    "hono": "^4.12.32",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,14 @@
+.DS_Store
+.cursor/hooks/logs/
+.cursor/plan-execute.active
+.cursor/plan-execute.status.json
+.cursor/plan-execute.next.json
+.cursor/plan-execute.through-all
+.pnpm-store/
+node_modules/
+packages/*/node_modules/
+apps/*/node_modules/
+**/test-results/
+**/playwright-report/
+**/coverage/
+**/.vite/

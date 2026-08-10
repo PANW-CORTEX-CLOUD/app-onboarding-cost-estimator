@@ -1,0 +1,17 @@
+{
+  "id": "gcp-multi-cloud-golden",
+  "provider": "gcp",
+  "checkedAt": "2026-07-28",
+  "officialUrls": [
+    "https://cloud.google.com/pubsub/pricing",
+    "https://cloud.google.com/storage/pricing",
+    "https://cloud.google.com/compute/disks-image-pricing"
+  ],
+  "expected": {
+    "capacityUnits": 1,
+    "streamTotal": 28.933087984720867,
+    "storageTotal": 2,
+    "adsTotal": 3.4191780821917805,
+    "snapshotGbMonths": 131.50684931506848
+  }
+}

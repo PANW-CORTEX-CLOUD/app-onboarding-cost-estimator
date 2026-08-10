@@ -1,0 +1,17 @@
+# Dev image for docker-compose.dev.yml — Node 22 + pnpm via corepack.
+# Source is bind-mounted at runtime; image only provides a ready toolchain.
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# Warm workspace metadata so first `pnpm install` in the container is faster.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/cost-engine/package.json ./packages/cost-engine/
+COPY packages/api/package.json ./packages/api/
+COPY apps/web/package.json ./apps/web/
+
+RUN pnpm install --frozen-lockfile
+
+ENV NODE_ENV=development

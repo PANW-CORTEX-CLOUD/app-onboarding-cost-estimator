@@ -1,0 +1,8 @@
+{
+  "name": "cloud-connector",
+  "private": true,
+  "packages": [
+    "packages/*",
+    "apps/*"
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "provider": "azure",
+  "region": "eastus",
+  "currency": "USD",
+  "meters": [
+    {
+      "meterId": "eh-standard-tu",
+      "unit": "TU-hour",
+      "unitPrice": 0.03,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/event-hubs/"
+    },
+    {
+      "meterId": "eh-standard-ingress-events",
+      "unit": "million-events",
+      "unitPrice": 0.028,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/event-hubs/"
+    },
+    {
+      "meterId": "blob-hot-lrs-capacity",
+      "unit": "GB-month",
+      "unitPrice": 0.0208,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
+    },
+    {
+      "meterId": "managed-disk-snapshot",
+      "unit": "GB-month",
+      "unitPrice": 0.05,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/managed-disks/"
+    },
+    {
+      "meterId": "vm-outpost-scanner",
+      "unit": "hour",
+      "unitPrice": 0.096,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/"
+    },
+    {
+      "meterId": "blob-data-read-ops",
+      "unit": "10k-ops",
+      "unitPrice": 0.004,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
+    },
+    {
+      "meterId": "acr-pull-bandwidth",
+      "unit": "GB",
+      "unitPrice": 0.01,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/container-registry/"
+    },
+    {
+      "meterId": "functions-scan-ops",
+      "unit": "million-exec",
+      "unitPrice": 0.2,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/functions/"
+    },
+    {
+      "meterId": "blob-hot-lrs-write-10k",
+      "unit": "10k-ops",
+      "unitPrice": 0.055,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
+    },
+    {
+      "meterId": "blob-hot-lrs-read-10k",
+      "unit": "10k-ops",
+      "unitPrice": 0.004,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
+    },
+    {
+      "meterId": "azure-egress-gb",
+      "unit": "GB",
+      "unitPrice": 0.087,
+      "currency": "USD",
+      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/bandwidth/"
+    }
+  ]
+}

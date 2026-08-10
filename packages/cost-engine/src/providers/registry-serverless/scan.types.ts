@@ -1,0 +1,70 @@
+/**
+ * Shared registry + serverless scan types (package 10).
+ * Only incremental scan pull / ops — never existing registry or function storage.
+ */
+import type { Confidence, LineItem } from "../../core/models/estimate.types.ts";
+
+export type RegistryScanInputs = {
+  enabled: boolean;
+  region: string;
+  imageCount: number;
+  avgImageGB: number;
+  scansPerMonth: number;
+  /**
+   * Same-region pull → zero/minimal bandwidth (TEST).
+   * Cross-region → apply egress uplift using registry meter rate.
+   */
+  crossRegionPull?: boolean;
+};
+
+export type ServerlessScanInputs = {
+  enabled: boolean;
+  region: string;
+  packageCount: number;
+  /** Average package / artifact size (GB) for bandwidth-ish meters. */
+  avgPackageGB: number;
+  scansPerMonth: number;
+};
+
+export type ScanEstimateResult = {
+  lineItems: LineItem[];
+  totals: { expected: number };
+  warnings: string[];
+  notes: string[];
+  confidence: Confidence;
+};
+
+export function requireRate(
+  unitPrices: Record<string, number>,
+  meterId: string,
+): number {
+  const p = unitPrices[meterId];
+  if (p === undefined) {
+    throw new Error(`missing unit price for meter '${meterId}' (no invented $0)`);
+  }
+  return p;
+}
+
+export function sumAmounts(items: LineItem[]): number {
+  return items.reduce((s, i) => s + i.amount, 0);
+}
+
+/** Incremental pull volume (GB) for registry scans. */
+export function registryPullGb(inputs: RegistryScanInputs): number {
+  if (inputs.imageCount < 0 || inputs.avgImageGB < 0 || inputs.scansPerMonth < 0) {
+    throw new Error("registry scan inputs must be non-negative");
+  }
+  return inputs.imageCount * inputs.avgImageGB * inputs.scansPerMonth;
+}
+
+/** Serverless scan ops units (package × scans) — mapped to million-request style meters. */
+export function serverlessScanOps(inputs: ServerlessScanInputs): number {
+  if (
+    inputs.packageCount < 0 ||
+    inputs.avgPackageGB < 0 ||
+    inputs.scansPerMonth < 0
+  ) {
+    throw new Error("serverless scan inputs must be non-negative");
+  }
+  return inputs.packageCount * inputs.scansPerMonth;
+}

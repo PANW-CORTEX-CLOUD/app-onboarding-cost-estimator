@@ -1,0 +1,5 @@
+# GCP Billing export style sample
+Service description,Cost,Currency
+Cloud Pub/Sub,55.00,USD
+Cloud Storage,12.00,USD
+Other Google Service,3.00,USD
