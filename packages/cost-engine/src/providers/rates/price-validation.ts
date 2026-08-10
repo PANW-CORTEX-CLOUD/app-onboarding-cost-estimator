@@ -71,17 +71,6 @@ export interface PriceValidationLedger {
 /** Verdicts whose number may be shown as an official vendor price. */
 export const TRUSTED_VERDICTS: readonly PriceValidationVerdict[] = ["verified"];
 
-/**
- * Verdicts that force the owning capability down to a Low-confidence band:
- * the number is either not a vendor SKU at all, or belongs to another service.
- */
-export const UNTRUSTED_VERDICTS: readonly PriceValidationVerdict[] = [
-  "mismatch",
-  "unsupported-meter",
-  "proxy",
-  "unverified",
-];
-
 const VALID_VERDICTS = new Set<string>([
   "verified",
   "mismatch",

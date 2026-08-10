@@ -90,6 +90,14 @@
       "currency": "USD",
       "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/bandwidth/"
+    },
+    {
+      "meterId": "blob-hot-lrs-list-10k",
+      "unit": "10k-ops",
+      "unitPrice": 0.05,
+      "currency": "USD",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
     }
   ]
 }

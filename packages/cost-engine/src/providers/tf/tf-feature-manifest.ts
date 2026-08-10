@@ -223,18 +223,6 @@ export function gateCapabilitiesByTf(
 }
 
 /**
- * Meters an as-deployed Azure estimate is allowed to bill.
- * Empty for providers without connector IaC — callers must not fall back to
- * the Azure set.
- */
-export function deployedMetersFor(
-  provider: CloudProvider,
-  manifest: TfFeatureManifest = loadTfFeatureManifest(),
-): string[] {
-  return provider === "azure" ? [...manifest.deployedBillableMeters] : [];
-}
-
-/**
  * Cross-check: the meters derived by walking the Terraform must equal the
  * hand-maintained audit allowlist. Two independent derivations of the same
  * fact — if they ever disagree, one of them is describing infrastructure that

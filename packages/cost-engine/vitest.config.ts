@@ -25,6 +25,7 @@ export default defineConfig({
             "src/providers/__tests__/tf-audit-reconciliation.test.ts",
             "src/providers/__tests__/tf-vs-retail-audit.test.ts",
             "src/providers/__tests__/price-validation.test.ts",
+            "src/providers/__tests__/meter-closure.test.ts",
           ],
         },
       },

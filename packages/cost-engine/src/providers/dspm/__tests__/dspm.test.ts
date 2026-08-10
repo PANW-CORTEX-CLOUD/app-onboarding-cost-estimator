@@ -26,7 +26,8 @@ const azureRates: RateCard = {
   region: "eastus",
   currency: "USD",
   unitPrices: {
-    "blob-data-read-ops": 0.004,
+    "blob-hot-lrs-read-10k": 0.004,
+    "blob-hot-lrs-list-10k": 0.05,
     "vm-outpost-scanner": 0.096,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
@@ -37,7 +38,8 @@ const awsRates: RateCard = {
   region: "us-east-1",
   currency: "USD",
   unitPrices: {
-    "s3-data-retrieval-band": 0.0004,
+    "s3-get-10k": 0.004,
+    "s3-put-10k": 0.05,
     "ec2-outpost-scanner": 0.0416,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
@@ -48,7 +50,8 @@ const gcpRates: RateCard = {
   region: "us-central1",
   currency: "USD",
   unitPrices: {
-    "gcs-data-read-band": 0.12,
+    "gcs-class-b-10k": 0.004,
+    "gcs-class-a-10k": 0.05,
     "gce-outpost-scanner": 0.0475,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
@@ -81,7 +84,12 @@ describe("package 09 — AC inputs + band", () => {
     // 1000 * 0.1 * 1 = 100 GB scanned × 0.004
     const r = estimateAzureDspm(base, azureRates);
     expect(r.scannedGB).toBe(100);
-    expect(r.totals.expected).toBeCloseTo(100 * 0.004);
+    // Scanning is billed per operation: 100 GB at the default 4 MB average
+    // object size is 25,600 objects → 25,600 reads + ceil(25,600/5,000) lists.
+    const objects = (100 * 1024) / 4;
+    const readCost = (objects / 10_000) * 0.004;
+    const listCost = (Math.ceil(objects / 5_000) / 10_000) * 0.05;
+    expect(r.totals.expected).toBeCloseTo(readCost + listCost, 12);
     expect(r.totals.low).toBeCloseTo(r.totals.expected * DSPM_BAND_LOW_FACTOR);
     expect(r.totals.high).toBeCloseTo(r.totals.expected * DSPM_BAND_HIGH_FACTOR);
   });
@@ -178,8 +186,10 @@ describe("package 09 — EDGE", () => {
   });
 
   it("meter ids match capability maps", () => {
-    expect(AZURE_DSPM_READ_METER).toBe("blob-data-read-ops");
-    expect(AWS_DSPM_READ_METER).toBe("s3-data-retrieval-band");
-    expect(GCP_DSPM_READ_METER).toBe("gcs-data-read-band");
+    // Scanning bills operations, so these are the vendors' operation meters —
+    // not the per-GB "band" meters this repo previously invented.
+    expect(AZURE_DSPM_READ_METER).toBe("blob-hot-lrs-read-10k");
+    expect(AWS_DSPM_READ_METER).toBe("s3-get-10k");
+    expect(GCP_DSPM_READ_METER).toBe("gcs-class-b-10k");
   });
 });

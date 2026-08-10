@@ -167,6 +167,9 @@ export function EstimatorPage() {
   const [scansPerMonth, setScansPerMonth] = useState<number>(
     DEFAULT_VOLUME_PRESET.scansPerMonth,
   );
+  // Object stores bill DSPM scanning per API call, so estate GB has to become
+  // an object count. 4 MB mirrors DEFAULT_AVG_OBJECT_SIZE_MB in the engine.
+  const [avgObjectSizeMB, setAvgObjectSizeMB] = useState<number>(4);
   const [imageCount, setImageCount] = useState<number>(
     DEFAULT_VOLUME_PRESET.imageCount,
   );
@@ -805,6 +808,7 @@ export function EstimatorPage() {
           avgImageGB,
           packageCount,
           egressGB,
+          avgObjectSizeMB,
           assumedEventBytes,
         },
       });
@@ -1496,6 +1500,7 @@ export function EstimatorPage() {
                       />
                       <CapabilityVolumeFields
                         caps={caps}
+                        avgObjectSizeMB={avgObjectSizeMB}
                         dataEstateGB={dataEstateGB}
                         pctScanned={pctScanned}
                         scansPerMonth={scansPerMonth}
@@ -1507,6 +1512,8 @@ export function EstimatorPage() {
                         egressGB={egressGB}
                         onChange={(patch) => {
                           if (patch.dataEstateGB != null) setDataEstateGB(patch.dataEstateGB);
+                          if (patch.avgObjectSizeMB != null)
+                            setAvgObjectSizeMB(patch.avgObjectSizeMB);
                           if (patch.pctScanned != null) setPctScanned(patch.pctScanned);
                           if (patch.scansPerMonth != null)
                             setScansPerMonth(patch.scansPerMonth);

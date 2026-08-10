@@ -62,37 +62,38 @@ naming the registry's price list.
 
 ## 2. Work items, in priority order
 
-### P0 — DSPM multiplies gigabytes by a per-operation price
+### ~~P0 — DSPM multiplies gigabytes by a per-operation price~~ — fixed 2026-08-10
 
-`providers/dspm/estimate-dspm-core.ts` computes:
-
-```ts
-expected = scannedGB * readRate;   // readRate is $/10k operations on Azure
-```
-
-`blob-data-read-ops` is **$0.004 per 10,000 operations**, not per GB. Gigabytes
-times a per-operation rate is not a currency amount — the Azure DSPM figure is
-dimensionally meaningless, whatever the price says. AWS and GCP avoid the unit
-error only by using the invented per-GB meters in the table above, so all three
-providers are wrong for different reasons.
-
-The fix needs one new input, because the conversion is genuinely unknowable
-without it: **average scanned object size**. Then
+`providers/dspm/estimate-dspm-core.ts` computed `scannedGB x ratePer10kOps`,
+which is not a currency amount. It now converts the estate to an object count
+and prices the API calls a scanner really makes:
 
 ```
-readOps  = scannedGB * 1024 / avgObjectSizeMB
-expected = readOps / 10_000 * ratePer10kOps          (+ egress, only when the scanner is out-of-region)
+objects  = scannedGB * 1024 / avgObjectSizeMB
+readOps  = objects                            one Get Blob per object
+listOps  = ceil(objects / pageSize)           paginated enumeration
+cost     = readOps/10_000 * readRate + listOps/10_000 * listRate
 ```
 
-Do this per provider: Azure `blob-hot-lrs-read-10k`, AWS `Requests-Tier2`
-(`s3-get-10k`), GCP `gcs-class-b-10k` — all three are **already verified** and
-already in the rate files, so no new price research is needed. Delete
-`s3-data-retrieval-band` and `gcs-data-read-band` once nothing references them.
+Grounded in Microsoft's own documentation: `Get Blob` is a Read operation and
+costs **one operation per blob regardless of size**, `List Blobs` bills as the
+dearer "list and create container" class, and **hot-tier retrieval is free** —
+so there was never a per-GB meter to use. S3 Standard and Cloud Storage behave
+the same way.
 
-Ship it behind an explicit input rather than a silent default: if
-`avgObjectSizeMB` is missing, fail closed the way DSPM already fails closed on
-empty discovery telemetry. Update `providers/dspm/__tests__/dspm.test.ts` and
-the three golden fixtures in the same change.
+All six meters involved were already verified: `blob-hot-lrs-read-10k`,
+`blob-hot-lrs-list-10k` (added and live-verified at $0.05/10K), `s3-get-10k`,
+`s3-put-10k`, `gcs-class-b-10k`, `gcs-class-a-10k`. The three invented per-GB
+meters (`blob-data-read-ops`, `s3-data-retrieval-band`, `gcs-data-read-band`)
+are no longer billed by anything; they stay in the ledger as
+`unsupported-meter` so the claim remains recorded and falsifiable.
+
+**Effect on quotes.** A 51,200 GB estate at 25% scanned, 4 MB average object:
+old model $51.20/month, new model $1.31 — the old figure was about 39x too
+high because it charged per gigabyte for something billed per call.
+
+`avgObjectSizeMB` is a new input on the API and in the driver step, defaulting
+to 4 MB and always stated in the estimate notes.
 
 ### P1 — Registry scan on Azure has no priceable model
 

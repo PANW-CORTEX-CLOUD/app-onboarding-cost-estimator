@@ -314,6 +314,13 @@ components:
           description: >
             Average audit event size in bytes for GB→events conversion (Azure EH
             ingress). Must be > 0. Default 1024 in engine.
+        avgObjectSizeMB:
+          type: number
+          exclusiveMinimum: 0
+          description: >
+            Average size of a scanned object, in MB. Object stores bill DSPM
+            scanning per API call rather than per GB, so this is what converts
+            an estate size into billable read and list operations. Must be > 0.
     CreateEstimateRequest:
       type: object
       additionalProperties: false

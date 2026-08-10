@@ -92,4 +92,46 @@ test.describe("MVP happy path", () => {
     await expect(page.getByTestId("export-json")).toBeEnabled();
     await expect(page.getByTestId("disclaimer")).toContainText("Indicative");
   });
+
+  test("DSPM asks for average object size and prices operations, not gigabytes", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Overview: DSPM has no connector Terraform, so it is a what-if only.
+    await page.getByTestId("scope-cap-dspm").check();
+    await expect(page.getByTestId("scope-badge-dspm")).toContainText("No Terraform");
+    await expect(page.getByTestId("scope-drivers-dspm")).toContainText("Data estate GB");
+    await page.getByTestId("tf-mode-what-if").check();
+    await page.getByTestId("journey-step-continue").click();
+    await page.getByTestId("journey-step-continue").click();
+
+    // The driver step must ask what converts an estate size into billable
+    // API calls — object stores charge per call, not per gigabyte.
+    const objectSize = page.getByTestId("input-avg-object-size-mb");
+    await expect(objectSize).toBeVisible();
+    await page.getByTestId("input-estate-main").fill("51200");
+    await objectSize.fill("4");
+
+    await page.getByTestId("journey-step-continue").click();
+    await page.getByTestId("run-estimate").click();
+
+    await expect(page.getByTestId("journey-tab-cost")).toHaveAttribute(
+      "aria-selected",
+      "true",
+      { timeout: 60_000 },
+    );
+    await page.getByTestId("results-tab-cost").click();
+    await page.getByTestId("result-flip-toggle").click();
+
+    const meterIds = await page
+      .getByTestId("cost-breakdown")
+      .locator(".meter-id")
+      .allTextContents();
+    const ids = meterIds.map((m) => m.trim());
+    expect(ids).toContain("blob-hot-lrs-read-10k");
+    expect(ids).toContain("blob-hot-lrs-list-10k");
+    // The invented per-GB scan meters must never reach the breakdown again.
+    expect(ids).not.toContain("blob-data-read-ops");
+  });
 });

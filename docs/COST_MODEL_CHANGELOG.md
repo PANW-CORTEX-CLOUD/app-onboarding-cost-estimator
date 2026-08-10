@@ -1,5 +1,27 @@
 # Cost model changelog
 
+## 2026-08-10b - DSPM priced per operation, not per gigabyte
+
+DSPM multiplied an estate size in GB by a per-10,000-operations rate. Object
+stores charge scanning per API call and hot/standard tiers have no retrieval
+fee at all, so the old figure was dimensionally meaningless and far too high -
+a 51,200 GB estate at 25% scanned moved from $51.20 to $1.31 per month.
+
+Estate GB now converts to an object count via a new `avgObjectSizeMB` input
+(default 4 MB, always stated in the notes), and the estimate bills one read
+operation per object plus `ceil(objects / pageSize)` list operations. Every
+meter used was already verified against the vendor price lists; a new
+`blob-hot-lrs-list-10k` ($0.05/10K) was added and live-verified.
+
+Also: `egress` was billed by all three estimators but declared in no capability
+map or doc, because `CapabilityId` did not include it. Declared now, and a new
+meter-closure test drives real estimates and asserts every emitted meter is
+both declared and validated - the invariant that would have caught it.
+
+No `modelVersion` bump for the egress declaration; the DSPM formula change is a
+correction of a defect rather than a re-rating, and the old number was not
+defensible in any case.
+
 ## 2026-08-10 — price validation ledger, TF-derived capability gating
 
 Rates corrected against the providers' own price lists (Azure Retail Prices API,

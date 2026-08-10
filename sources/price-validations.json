@@ -299,6 +299,31 @@
       "notes": "Retail quotes 0.000002 per 10 executions = 0.20 per million. Free grant of 1M executions/month is not modelled."
     },
     {
+      "meterId": "blob-hot-lrs-list-10k",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.05,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Storage",
+        "meterName": "LRS List and Create Container Operations",
+        "productName": "Blob Storage",
+        "expectedUnitOfMeasure": "10K"
+      },
+      "observed": {
+        "unitPrice": 0.05,
+        "unitOfMeasure": "10K",
+        "skuName": "Hot LRS",
+        "productName": "Blob Storage"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
+      "dimension": "ops",
+      "notes": "List Blobs bills as 'List and create container', a dearer class than a read. DSPM pays ceil(objects/5000) of these to enumerate the estate."
+    },
+    {
       "meterId": "kinesis-shard-hour",
       "provider": "aws",
       "region": "us-east-1",

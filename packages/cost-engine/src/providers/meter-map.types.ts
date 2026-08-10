@@ -6,6 +6,16 @@
  */
 
 /** Cortex Cloud customer-infra capabilities modeled by the estimator. */
+/**
+ * Capabilities the estimator can price.
+ *
+ * `egress` was priced by all three estimators long before it appeared here,
+ * which is exactly why it was missing from the capability maps and the docs:
+ * the type made the omission unrepresentable in the map but not in the
+ * estimator. providers/__tests__/meter-closure.test.ts now drives real
+ * estimates and asserts every emitted meter is declared, so the two cannot
+ * drift apart again.
+ */
 export type CapabilityId =
   | "discovery"
   | "audit_logs"
@@ -13,7 +23,8 @@ export type CapabilityId =
   | "ads_outpost"
   | "dspm"
   | "registry"
-  | "serverless";
+  | "serverless"
+  | "egress";
 
 /** Quote confidence for UI honesty bands. */
 export type Confidence = "High" | "Med" | "Low";

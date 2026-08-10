@@ -42,6 +42,7 @@ export const CreateEstimateRequestSchema = z
         egressGB: z.number().optional(),
         overrideStreamMetrics: z.boolean().optional(),
         assumedEventBytes: z.number().positive().optional(),
+        avgObjectSizeMB: z.number().positive().optional(),
       })
       .strict()
       .optional(),

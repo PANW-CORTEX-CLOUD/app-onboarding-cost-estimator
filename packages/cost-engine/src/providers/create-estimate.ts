@@ -30,6 +30,16 @@ import { estimateEgress } from "./egress/estimate-egress.ts";
 import { bandFromExpected } from "./dspm/dspm.types.ts";
 import { appendTfHonestyWarnings } from "./tf-honesty-warnings.ts";
 import {
+  DEFAULT_ACCOUNT_COUNT,
+  DEFAULT_ADS_SCANS_PER_MONTH,
+  DEFAULT_AVG_PACKAGE_GB,
+  DEFAULT_DSPM_PCT_SCANNED,
+  DEFAULT_MONTH_HOURS_VALUE,
+  DEFAULT_SCANS_PER_MONTH,
+  DEFAULT_SNAPSHOT_LIFETIME_HOURS,
+  HOURS_PER_DAY,
+} from "../core/estimator-defaults.ts";
+import {
   DEFAULT_TF_MODE,
   gateCapabilitiesByTf,
   type TfMode,
@@ -78,6 +88,12 @@ export type CreateEstimateRequest = {
     egressGB?: number;
     /** Average event bytes for stream GB→events (Azure ingress). Must be > 0. */
     assumedEventBytes?: number;
+    /**
+     * Average size of a scanned object, in MB. Object stores bill scanning per
+     * API call, so this is what turns a DSPM estate size into billable
+     * operations. Defaults to DEFAULT_AVG_OBJECT_SIZE_MB.
+     */
+    avgObjectSizeMB?: number;
   };
   monthHours?: number;
   /**
@@ -127,7 +143,7 @@ export async function createEstimate(
   req: CreateEstimateRequest,
 ): Promise<CreateEstimateResponse> {
   const { provider, region } = req;
-  const monthHours = req.monthHours ?? 730;
+  const monthHours = req.monthHours ?? DEFAULT_MONTH_HOURS_VALUE;
   if (monthHours <= 0) {
     throw new Error(`monthHours must be > 0, got ${monthHours}`);
   }
@@ -160,7 +176,7 @@ export async function createEstimate(
     );
   }
 
-  const accountCount = vol.accountCount ?? 10;
+  const accountCount = vol.accountCount ?? DEFAULT_ACCOUNT_COUNT;
   const overrideStreamMetrics = vol.overrideStreamMetrics === true;
   const resolvedVol = resolveVolumeSignals({
     provider,
@@ -224,6 +240,11 @@ export async function createEstimate(
     warnings.push(...storage.warnings);
   }
 
+  // TODO(REQ-6): `?? 0` below collapses "the user told us nothing" into "the
+  // answer is zero". The estimators warn on a zero, so the output is not
+  // silent, but by then the request layer has already destroyed the difference
+  // between absent and deliberately-zero. Carry `undefined` through and let
+  // each estimator decide whether to refuse or to price an explicit zero.
   if (caps.adsCloud || caps.adsOutpost) {
     const ads = estimateAds(
       provider,
@@ -233,8 +254,8 @@ export async function createEstimate(
         region,
         vmCount: vol.vmCount ?? 0,
         avgUsedDiskGB: vol.avgUsedDiskGB ?? 0,
-        scansPerMonth: vol.scansPerMonth ?? 4,
-        snapshotLifetimeHours: 24,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_ADS_SCANS_PER_MONTH,
+        snapshotLifetimeHours: DEFAULT_SNAPSHOT_LIFETIME_HOURS,
         monthHours,
       },
       rates,
@@ -250,8 +271,9 @@ export async function createEstimate(
         enabled: true,
         region,
         dataEstateGB: vol.dataEstateGB ?? 0,
-        pctScanned: vol.pctScanned ?? 10,
-        scansPerMonth: vol.scansPerMonth ?? 1,
+        pctScanned: vol.pctScanned ?? DEFAULT_DSPM_PCT_SCANNED,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
+        avgObjectSizeMB: vol.avgObjectSizeMB,
       },
       rates,
     );
@@ -267,7 +289,7 @@ export async function createEstimate(
         region,
         imageCount: vol.imageCount ?? 0,
         avgImageGB: vol.avgImageGB ?? 0,
-        scansPerMonth: vol.scansPerMonth ?? 1,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
         crossRegionPull: false,
       },
       rates,
@@ -283,8 +305,8 @@ export async function createEstimate(
         enabled: true,
         region,
         packageCount: vol.packageCount ?? 0,
-        avgPackageGB: 0.01,
-        scansPerMonth: vol.scansPerMonth ?? 1,
+        avgPackageGB: DEFAULT_AVG_PACKAGE_GB,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
       },
       rates,
     );
@@ -294,7 +316,7 @@ export async function createEstimate(
 
   if (caps.egress) {
     const monthlyIngress =
-      streamIngressGbPerDay * (monthHours / 24);
+      streamIngressGbPerDay * (monthHours / HOURS_PER_DAY);
     const eg = estimateEgress(
       provider,
       {

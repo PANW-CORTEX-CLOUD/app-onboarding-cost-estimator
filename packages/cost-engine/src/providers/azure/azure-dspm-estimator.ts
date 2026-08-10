@@ -8,7 +8,9 @@ import { AZURE_TF_DEFAULTS } from "./capability-meter-map.ts";
 import { estimateDspmForProvider } from "../dspm/estimate-dspm-core.ts";
 import type { DspmInputs, DspmResult } from "../dspm/dspm.types.ts";
 
-export const AZURE_DSPM_READ_METER = "blob-data-read-ops";
+export const AZURE_DSPM_READ_METER = "blob-hot-lrs-read-10k";
+/** Enumerating the estate: a dearer operation class than a read. */
+export const AZURE_DSPM_LIST_METER = "blob-hot-lrs-list-10k";
 export const AZURE_DSPM_EPHEMERAL_METER = "vm-outpost-scanner";
 
 export function estimateAzureDspm(
@@ -23,6 +25,7 @@ export function estimateAzureDspm(
   return estimateDspmForProvider(
     "azure",
     {
+      listMeterId: AZURE_DSPM_LIST_METER,
       dataReadMeterId: AZURE_DSPM_READ_METER,
       ephemeralMeterId: AZURE_DSPM_EPHEMERAL_METER,
       providerLabel: "Azure",

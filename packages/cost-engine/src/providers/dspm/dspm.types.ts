@@ -24,6 +24,15 @@ export type DspmInputs = {
   includeEphemeralInfra?: boolean;
   /** Hours of ephemeral connector compute per scan when uplift enabled. Default 1. */
   ephemeralHoursPerScan?: number;
+  /**
+   * Average size of one scanned object, in MB.
+   *
+   * Object stores charge per API call, not per gigabyte, so this is what turns
+   * an estate measured in bytes into a number of billable operations. It is a
+   * property of the customer's data rather than of the cloud, so there is no
+   * vendor figure to look up — see DEFAULT_AVG_OBJECT_SIZE_MB.
+   */
+  avgObjectSizeMB?: number;
 };
 
 export type DspmBand = {
