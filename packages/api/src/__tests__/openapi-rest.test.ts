@@ -166,6 +166,34 @@ describe("package 15 — OpenAPI REST", () => {
     expect(body.title).toBeTruthy();
   });
 
+  it("negative volume fields fail closed at the API boundary (400), not downstream", async () => {
+    // Most volume.* numeric fields used bare z.number().optional() with no
+    // .nonnegative(), unlike assumedEventBytes/avgObjectSizeMB which already
+    // had .positive(). Downstream estimators happen to throw on negative
+    // values too, but that's defense-in-depth, not a substitute for
+    // rejecting invalid input at the boundary that receives it.
+    const bad = CreateEstimateRequestSchema.safeParse({
+      provider: "aws",
+      region: "us-east-1",
+      capabilities: { dspm: true },
+      volume: { dataEstateGB: -1 },
+    });
+    expect(bad.success).toBe(false);
+
+    const app = createApp();
+    const res = await app.request("/v1/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "aws",
+        region: "us-east-1",
+        capabilities: { dspm: true },
+        volume: { dataEstateGB: -1 },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("refreshRates is rate-limited (429)", async () => {
     const app = createApp();
     const body = JSON.stringify({
