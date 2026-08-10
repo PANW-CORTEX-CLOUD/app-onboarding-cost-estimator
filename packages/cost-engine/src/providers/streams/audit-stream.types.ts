@@ -3,6 +3,7 @@
  * Provider formulas live under providers/{azure,aws,gcp}/*-stream-estimator.ts.
  */
 import type { LineItem } from "../../core/models/estimate.types.ts";
+export { requireRate } from "../../core/rates/require-rate.ts";
 
 export type OrgPresetId = "small" | "medium" | "large";
 
@@ -108,21 +109,6 @@ export function monthlyIngressGb(
 export function gbToMillionEvents(gb: number, eventBytes = ASSUMED_EVENT_BYTES): number {
   const events = (gb * 1024 ** 3) / eventBytes;
   return events / 1_000_000;
-}
-
-/**
- * Look up a meter's unit price, failing closed instead of defaulting to $0.
- * @throws when `meterId` is absent from `unitPrices`.
- */
-export function requireRate(
-  unitPrices: Record<string, number>,
-  meterId: string,
-): number {
-  const p = unitPrices[meterId];
-  if (p === undefined) {
-    throw new Error(`missing unit price for meter '${meterId}' (no invented $0)`);
-  }
-  return p;
 }
 
 /** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */

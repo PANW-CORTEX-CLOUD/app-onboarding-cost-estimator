@@ -3,6 +3,7 @@
  * Always emit low/expected/high bands (Low confidence) — never a false-precise single point.
  */
 import type { Confidence, LineItem } from "../../core/models/estimate.types.ts";
+export { requireRate } from "../../core/rates/require-rate.ts";
 
 export type DspmInputs = {
   enabled: boolean;
@@ -58,21 +59,6 @@ export const DSPM_BAND_LOW_FACTOR = 0.5;
 export const DSPM_BAND_HIGH_FACTOR = 2.0;
 
 export const DEFAULT_EPHEMERAL_HOURS_PER_SCAN = 1;
-
-/**
- * Look up a meter's unit price, failing closed instead of defaulting to $0.
- * @throws when `meterId` is absent from `unitPrices`.
- */
-export function requireRate(
-  unitPrices: Record<string, number>,
-  meterId: string,
-): number {
-  const p = unitPrices[meterId];
-  if (p === undefined) {
-    throw new Error(`missing unit price for meter '${meterId}' (no invented $0)`);
-  }
-  return p;
-}
 
 /**
  * Monthly data volume scanned: `dataEstateGB × (pctScanned / 100) × scansPerMonth`.

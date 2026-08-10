@@ -3,6 +3,7 @@
  * Provider formulas: providers/{azure,aws,gcp}/*-storage-estimator.ts
  */
 import type { LineItem } from "../../core/models/estimate.types.ts";
+export { requireRate } from "../../core/rates/require-rate.ts";
 
 /** Supported redundancy — anything else fails closed unless explicitly allowlisted later. */
 export type StorageRedundancy =
@@ -47,9 +48,12 @@ export const DEFAULT_AUDIT_STORAGE_FLOOR_GB = 1;
 
 /**
  * Resolve billable stored capacity (GB-month). `avgGB` (when > 0) wins;
- * otherwise falls back to `DEFAULT_AUDIT_STORAGE_FLOOR_GB` with a warning —
- * never a silent $0 while audit storage is enabled.
+ * unset or exactly 0 falls back to `DEFAULT_AUDIT_STORAGE_FLOOR_GB` with a
+ * warning — never a silent $0 while audit storage is enabled.
  * @returns 0 when `!enabled` (no warning pushed).
+ * @throws when `avgGB` is negative — a negative capacity is invalid input,
+ *   not "unset" (matches the writeOps/readOps negative check in the
+ *   provider estimators, which throw rather than substitute a floor).
  */
 export function resolveCapacityGb(
   enabled: boolean,
@@ -57,26 +61,14 @@ export function resolveCapacityGb(
   warnings: string[],
 ): number {
   if (!enabled) return 0;
+  if (avgGB !== undefined && avgGB < 0) {
+    throw new Error(`avgGB must be non-negative, got ${avgGB}`);
+  }
   if (avgGB !== undefined && avgGB > 0) return avgGB;
   warnings.push(
     `audit storage enabled with avgGB=${avgGB ?? "unset"} — applying floor ${DEFAULT_AUDIT_STORAGE_FLOOR_GB} GB (no silent $0 capacity)`,
   );
   return DEFAULT_AUDIT_STORAGE_FLOOR_GB;
-}
-
-/**
- * Look up a meter's unit price, failing closed instead of defaulting to $0.
- * @throws when `meterId` is absent from `unitPrices`.
- */
-export function requireRate(
-  unitPrices: Record<string, number>,
-  meterId: string,
-): number {
-  const p = unitPrices[meterId];
-  if (p === undefined) {
-    throw new Error(`missing unit price for meter '${meterId}' (no invented $0)`);
-  }
-  return p;
 }
 
 /** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */

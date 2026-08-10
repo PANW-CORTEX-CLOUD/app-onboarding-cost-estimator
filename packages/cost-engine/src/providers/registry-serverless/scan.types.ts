@@ -3,6 +3,7 @@
  * Only incremental scan pull / ops — never existing registry or function storage.
  */
 import type { Confidence, LineItem } from "../../core/models/estimate.types.ts";
+export { requireRate } from "../../core/rates/require-rate.ts";
 
 export type RegistryScanInputs = {
   enabled: boolean;
@@ -33,21 +34,6 @@ export type ScanEstimateResult = {
   notes: string[];
   confidence: Confidence;
 };
-
-/**
- * Look up a meter's unit price, failing closed instead of defaulting to $0.
- * @throws when `meterId` is absent from `unitPrices`.
- */
-export function requireRate(
-  unitPrices: Record<string, number>,
-  meterId: string,
-): number {
-  const p = unitPrices[meterId];
-  if (p === undefined) {
-    throw new Error(`missing unit price for meter '${meterId}' (no invented $0)`);
-  }
-  return p;
-}
 
 /** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */
 export function sumAmounts(items: LineItem[]): number {
