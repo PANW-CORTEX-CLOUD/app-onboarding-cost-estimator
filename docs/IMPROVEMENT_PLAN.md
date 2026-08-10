@@ -116,7 +116,7 @@ still produce numbers.
   the quote. Clears the last `unverified` row and its `blockedReason`.
   *Tests*: ledger gate stops reporting a blocked row.
 
-## REQ-3 — Volume tiers and free allowances must not be silently ignored  `todo`
+## REQ-3 — Volume tiers and free allowances must not be silently ignored  `done`
 
 Several verified meters are only the **first** tier of a graduated price, and
 several services have free grants the estimator never applies. Large estates are
@@ -125,16 +125,48 @@ directions.
 
 ### UC-3.1 — A 200 TB estate is not billed at the first-tier rate throughout
 
-- **T-3.1.1** `todo` Model graduated tiers for `blob-hot-lrs-capacity`,
-  `s3-standard-storage`, `aws-egress-gb`, `gcp-egress-gb`. The ledger already
-  captures the tier table in `observed.tiersSeen`.
-  *Tests*: a volume spanning two tiers bills each at its own rate; **edge** a
-  volume exactly on a tier boundary does not double-count.
-- **T-3.1.2** `todo` Apply free allowances (Azure 100 GB/month egress, Pub/Sub
-  first 10 GiB, Lambda first 1M requests) behind an explicit
-  `applyFreeAllowances` flag, defaulting **off** so quotes stay conservative.
-  *Tests*: flag off reproduces today's totals exactly; flag on subtracts the
-  documented grant.
+- **T-3.1.1** `done` Ladders modelled for `blob-hot-lrs-capacity` (0/51200/512000),
+  `s3-standard-storage` (0/51200/512000), `azure-egress-gb`
+  (0/100/10335/51295/153695) and `aws-egress-gb` (0/10240/51200/153600) —
+  boundaries read from Azure `tierMinimumUnits` and AWS `beginRange`, not
+  transcribed from a marketing page. `gcp-egress-gb` is left flat: Google
+  publishes no keyless feed, so its boundaries cannot be verified.
+  *Tests*: bands charged at their own rates; **edge** exactly on a boundary
+  stays in the lower band; **edge** one unit past opens the next band with one
+  unit; **edge** zero, fractional, negative, non-finite; malformed ladders
+  rejected; **e2e** 200,000 GB bills $4,036.20 rather than $4,160.00.
+- **T-3.1.2** `done` `applyFreeAllowances`, default **off**. Azure publishes its
+  100 GB egress allowance as a real $0 band, so honouring the ladder blindly
+  would apply it — but the allowance is granted **per subscription and shared
+  across every service in it**, so a subscription already using it elsewhere
+  would get an understated quote. Off by default re-prices the free band at the
+  first paid rate while leaving every published boundary intact.
+  *Tests*: default charges from the first unit; opt-in honours the band;
+  **edge** opt-in still charges above the boundary; **edge** a ladder with no
+  free band, and an entirely-free ladder, are both left alone.
+
+## REQ-10 — A rate's source must not change the answer  `done`
+
+Found while validating REQ-3 end to end: tiering worked from the in-repo rate
+file and **vanished whenever a live or cached rate card was used**, because each
+adapter rebuilt `unitPrices` by hand and dropped `unitTiers`. Same inputs,
+different answer, no warning — the worst shape a defect can take.
+
+The AWS and GCP adapters were worse still: they replaced the document with the
+live response rather than layering over it, so any meter the live query missed
+simply had no price.
+
+- **T-10.1.1** `done` One `mergeLiveOverFallback` helper for all three adapters.
+  A live price that confirms the recorded one keeps its ladder; a live price
+  that differs drops to flat **and warns**, because fresh price plus stale
+  boundaries would invent a ladder nobody published.
+  *Tests*: confirmed price keeps the ladder; uncovered meter keeps price and
+  ladder; **edge** re-priced meter goes flat with a warning naming
+  `rates:validate`; **edge** a live meter unknown to the document is honoured
+  without a ladder; **e2e** the live API path now applies tiers.
+
+*Learning worth keeping*: a feature that reads from a fallback file must be
+tested through the live path too, or it only works offline.
 
 ## REQ-4 — Rate validation must cover GCP automatically  `todo`
 

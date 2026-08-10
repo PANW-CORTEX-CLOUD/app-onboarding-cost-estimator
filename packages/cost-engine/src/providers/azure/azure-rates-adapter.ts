@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { RatesAdapter } from "../../core/ports/rates-adapter.interface.ts";
 import type { RateCard } from "../../core/models/estimate.types.ts";
 import { ageDaysFromCapturedAt } from "../../core/rates/age-days.ts";
+import { mergeLiveOverFallback } from "../rates/merge-live-rates.ts";
 import {
   fallbackResult,
   filterUsdUnitPrices,
@@ -120,18 +121,16 @@ export function createAzureRatesAdapter(
           warnings.push("azure retail produced no USD meters; using fallback");
           return fallbackResult(doc, warnings, now);
         }
-        // Merge: live overrides known meters; keep fallback for meters live missed (no invent $0).
-        const merged = { ...doc.meters.reduce<Record<string, number>>((acc, m) => {
-          acc[m.meterId] = m.unitPrice;
-          return acc;
-        }, {}), ...parsed.unitPrices };
-        const rates: RateCard = {
-          provider: "azure",
-          region: doc.region,
-          currency: "USD",
-          unitPrices: merged,
-          capturedAt: new Date().toISOString(),
-        };
+        // Merge live over the in-repo document, preserving published tier
+        // ladders. Rebuilding unitPrices by hand used to drop them silently.
+        const mergedRates = mergeLiveOverFallback(
+          "azure",
+          doc,
+          parsed.unitPrices,
+          new Date().toISOString(),
+        );
+        warnings.push(...mergedRates.warnings);
+        const rates: RateCard = mergedRates.rates;
         return {
           rates,
           ratesSource: "live",

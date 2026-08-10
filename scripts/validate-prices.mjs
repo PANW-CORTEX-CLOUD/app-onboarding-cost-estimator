@@ -113,13 +113,14 @@ async function checkLedgerBinding(ledger) {
     try {
       assertFallbackMatchesLedger(loadFallbackFile(path.join(ROOT, rel)), ledger);
     } catch (e) {
-      problems.push(
-        ...String(e instanceof Error ? e.message : e)
-          .split("\n")
-          .slice(1)
-          .map((l) => l.trim())
-          .filter(Boolean),
-      );
+      const message = String(e instanceof Error ? e.message : e);
+      // The engine's drift error is a header line followed by one line per
+      // problem. Anything else — a malformed rate file, an unreadable path —
+      // is a single line, and stripping a header that is not there swallowed
+      // it entirely. Only strip when the header is actually present.
+      const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
+      const isDriftReport = /^price-validations drift \(\d+\)/.test(lines[0] ?? "");
+      problems.push(...(isDriftReport ? lines.slice(1) : [`${provider}: ${message}`]));
     }
   }
   return problems;

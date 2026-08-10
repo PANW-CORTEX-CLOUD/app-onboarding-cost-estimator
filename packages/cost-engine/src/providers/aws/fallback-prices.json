@@ -25,7 +25,21 @@
       "unitPrice": 0.023,
       "currency": "USD",
       "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/",
+      "tiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.023
+        },
+        {
+          "fromUnits": 51200,
+          "unitPrice": 0.022
+        },
+        {
+          "fromUnits": 512000,
+          "unitPrice": 0.021
+        }
+      ]
     },
     {
       "meterId": "ebs-snapshot-storage",
@@ -73,7 +87,25 @@
       "unitPrice": 0.09,
       "currency": "USD",
       "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/"
+      "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/",
+      "tiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.09
+        },
+        {
+          "fromUnits": 10240,
+          "unitPrice": 0.085
+        },
+        {
+          "fromUnits": 51200,
+          "unitPrice": 0.07
+        },
+        {
+          "fromUnits": 153600,
+          "unitPrice": 0.05
+        }
+      ]
     }
   ]
 }

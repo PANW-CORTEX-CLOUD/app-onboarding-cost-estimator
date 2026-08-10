@@ -27,6 +27,7 @@ export default defineConfig({
             "src/providers/__tests__/price-validation.test.ts",
             "src/providers/__tests__/meter-closure.test.ts",
             "src/providers/__tests__/capability-drivers.test.ts",
+            "src/providers/__tests__/tiered-pricing-integration.test.ts",
           ],
         },
       },

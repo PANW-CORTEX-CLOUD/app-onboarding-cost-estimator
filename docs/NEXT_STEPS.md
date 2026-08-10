@@ -127,17 +127,29 @@ Catalog API needs an API key and the pricing pages render client-side, so all
 the exact list and the last recorded quote. Wiring a Billing Catalog key into
 CI would close the last gap.
 
-### P4 — Volume tiers are not modelled
+### ~~P4 — Volume tiers are not modelled~~ — fixed 2026-08-10
 
-Several verified meters are the *first* tier of a graduated price:
-`blob-hot-lrs-capacity` (0.0208 up to 50 TB, then 0.019968 / 0.019136),
-`aws-egress-gb` (0.09 up to 10 TB, then 0.085 / 0.070 / 0.050),
-`s3-standard-storage` (0.023 for the first 50 TB), `gcp-egress-gb` (first
-tier). The ledger records the tiers it saw in `observed.tiersSeen`. Large
-estates are therefore over-estimated, which is the safe direction, but it
-should be modelled rather than left implicit. Free allowances (Azure's 100
-GB/month egress, Pub/Sub's first 10 GiB, Lambda's first 1M requests) are
-likewise not modelled.
+Four meters now carry their published ladders, with boundaries read from the
+vendors' machine-readable feeds rather than transcribed:
+
+| Meter | Boundaries (units) |
+| --- | --- |
+| `blob-hot-lrs-capacity` | 0 / 51,200 / 512,000 |
+| `s3-standard-storage` | 0 / 51,200 / 512,000 |
+| `azure-egress-gb` | 0 / 100 / 10,335 / 51,295 / 153,695 |
+| `aws-egress-gb` | 0 / 10,240 / 51,200 / 153,600 |
+
+A 200,000 GB audit store now costs $4,036.20/month instead of $4,160.00. Small
+estates are unchanged.
+
+`gcp-egress-gb` stays flat: Google publishes no keyless feed, so its boundaries
+cannot be verified, and guessing them would be exactly the invention this work
+exists to remove.
+
+**Free allowances are opt-in.** Azure publishes its 100 GB egress allowance as a
+$0 band, but the allowance is granted per subscription and shared across every
+service in it — so the default assumes it is already spent, and
+`applyFreeAllowances` opts in.
 
 ---
 

@@ -14,6 +14,10 @@ import {
   type AuditStorageInputs,
   type AuditStorageResult,
 } from "../storage/audit-storage.types.ts";
+import {
+  priceQuantity,
+  tieredPricingNote,
+} from "../rates/tiered-rate.ts";
 
 export const AZURE_AUDIT_CAPACITY_METER = "blob-hot-lrs-capacity";
 /** Optional ops meters (per 10k operations) — required in RateCard when ops > 0. */
@@ -43,8 +47,13 @@ export function estimateAzureAuditStorage(
   assertAllowedRedundancy("azure", AZURE_ALLOWED_REDUNDANCY, inputs.redundancy);
 
   const capacityGb = resolveCapacityGb(true, inputs.avgGB, warnings);
-  const capacityRate = requireRate(rates.unitPrices, AZURE_AUDIT_CAPACITY_METER);
-  const capacityCost = capacityGb * capacityRate;
+  // Capacity is graduated on the clouds that publish a ladder; priceQuantity
+  // charges each band at its own rate instead of the first band throughout.
+  const capacityPrice = priceQuantity(rates, AZURE_AUDIT_CAPACITY_METER, capacityGb);
+  const capacityRate = capacityPrice.effectiveUnitPrice;
+  const capacityCost = capacityPrice.amount;
+  const capacityTierNote = tieredPricingNote(AZURE_AUDIT_CAPACITY_METER, capacityPrice);
+  if (capacityTierNote) notes.push(capacityTierNote);
 
   const writeOps = inputs.writeOpsPerMonth ?? 0;
   const readOps = inputs.readOpsPerMonth ?? 0;

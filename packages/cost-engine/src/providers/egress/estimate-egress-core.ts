@@ -11,6 +11,7 @@ import {
   lookupEgressZone,
   type EgressZoneCard,
 } from "./egress-zone-cards.ts";
+import { priceQuantity, tieredPricingNote } from "../rates/tiered-rate.ts";
 import {
   requireRate,
   resolveEgressGb,
@@ -124,9 +125,18 @@ export function estimateEgressForProvider(
     );
   }
 
-  const baseRate = requireRate(rates.unitPrices, config.meterId);
-  const ratePerGb = baseRate * zone.rateMultiplier;
-  const amount = egressGb * ratePerGb;
+  // Egress is graduated. The zone multiplier scales the whole ladder rather
+  // than a single rate: a destination that costs 1.2x costs 1.2x in every
+  // band, so applying it to the graduated total is equivalent to applying it
+  // to each band and keeps the published boundaries intact.
+  const basePrice = priceQuantity(rates, config.meterId, egressGb);
+  const amount = basePrice.amount * zone.rateMultiplier;
+  const ratePerGb =
+    egressGb > 0
+      ? amount / egressGb
+      : basePrice.effectiveUnitPrice * zone.rateMultiplier;
+  const tierNote = tieredPricingNote(config.meterId, basePrice);
+  if (tierNote) notes.push(tierNote);
 
   const lineItems: LineItem[] = [
     {
@@ -137,7 +147,10 @@ export function estimateEgressForProvider(
       confidence: "Low",
     },
   ];
-  notes.push(`zone=${zone.zone} (${zone.label}); ratePerGb=${ratePerGb}`);
+  notes.push(
+    `zone=${zone.zone} (${zone.label}); ratePerGb=${ratePerGb}` +
+      (basePrice.tiered ? " (blended across published tiers)" : ""),
+  );
 
   return {
     lineItems,

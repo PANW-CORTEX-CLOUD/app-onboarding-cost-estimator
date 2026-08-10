@@ -1,5 +1,26 @@
 # Cost model changelog
 
+## 2026-08-10d - graduated tiers, and a rate source that changed the answer
+
+Storage and egress are billed as ladders, not flat rates. Four meters now carry
+their published boundaries, read from Azure `tierMinimumUnits` and AWS
+`beginRange`. A 200,000 GB audit store drops from $4,160.00 to $4,036.20 per
+month; small estates are unchanged.
+
+Free allowances are opt-in via `applyFreeAllowances`, default off. Azure
+publishes its 100 GB egress allowance as a real $0 band, but it is granted per
+subscription and shared across every service in it, so assuming it is available
+to this workload would understate the bill.
+
+Fixed while validating the above: tiering applied from the in-repo rate file and
+vanished whenever a live or cached card was used, because each adapter rebuilt
+unitPrices by hand and dropped the ladders. AWS and GCP also replaced the
+document instead of layering over it, leaving uncovered meters unpriced. All
+three now share one merge that preserves ladders and warns when a live price
+diverges from the recorded one.
+
+No modelVersion bump: these correct a defect rather than re-rate the model.
+
 ## 2026-08-10c - registry scanning bills real egress; sizing fails closed
 
 Research settled what a registry scan actually costs: Microsoft states there is

@@ -82,7 +82,21 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
-      "notes": "First capacity tier (0-50TB). Retail also lists 0.019968 / 0.019136 for higher tiers; estimator prices the first tier only."
+      "notes": "First capacity tier (0-50TB). Retail also lists 0.019968 / 0.019136 for higher tiers; estimator prices the first tier only.",
+      "claimedTiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.0208
+        },
+        {
+          "fromUnits": 51200,
+          "unitPrice": 0.019968
+        },
+        {
+          "fromUnits": 512000,
+          "unitPrice": 0.019136
+        }
+      ]
     },
     {
       "meterId": "blob-hot-lrs-write-10k",
@@ -218,7 +232,29 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/bandwidth/",
-      "notes": "First paid tier after the 100 GB/month free allowance. Estimator does not model the free allowance."
+      "notes": "First paid tier after the 100 GB/month free allowance. Estimator does not model the free allowance.",
+      "claimedTiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.0
+        },
+        {
+          "fromUnits": 100,
+          "unitPrice": 0.087
+        },
+        {
+          "fromUnits": 10335,
+          "unitPrice": 0.083
+        },
+        {
+          "fromUnits": 51295,
+          "unitPrice": 0.07
+        },
+        {
+          "fromUnits": 153695,
+          "unitPrice": 0.05
+        }
+      ]
     },
     {
       "meterId": "blob-data-read-ops",
@@ -390,7 +426,21 @@
         ]
       },
       "verifiedAt": "2026-08-10",
-      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/",
+      "claimedTiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.023
+        },
+        {
+          "fromUnits": 51200,
+          "unitPrice": 0.022
+        },
+        {
+          "fromUnits": 512000,
+          "unitPrice": 0.021
+        }
+      ]
     },
     {
       "meterId": "s3-put-10k",
@@ -516,7 +566,25 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/",
-      "notes": "Tiers beyond 10 TB drop to 0.085 / 0.070 / 0.050. Estimator prices the first tier only."
+      "notes": "Tiers beyond 10 TB drop to 0.085 / 0.070 / 0.050. Estimator prices the first tier only.",
+      "claimedTiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.09
+        },
+        {
+          "fromUnits": 10240,
+          "unitPrice": 0.085
+        },
+        {
+          "fromUnits": 51200,
+          "unitPrice": 0.07
+        },
+        {
+          "fromUnits": 153600,
+          "unitPrice": 0.05
+        }
+      ]
     },
     {
       "meterId": "lambda-scan-ops",
