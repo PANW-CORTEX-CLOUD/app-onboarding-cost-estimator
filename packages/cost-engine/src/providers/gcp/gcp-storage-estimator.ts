@@ -25,6 +25,23 @@ export const GCP_AUDIT_READ_OPS_METER = "gcs-class-b-10k";
 
 export const GCP_ALLOWED_REDUNDANCY = ["STANDARD", "GCS_STANDARD"] as const;
 
+/**
+ * GCP Cloud Storage Standard audit-storage monthly cost.
+ *
+ * Cloud Storage capacity is priced per **GB-month** (decimal GB, not GiB) —
+ * unlike Pub/Sub, no GB→GiB conversion is applied here. Formula:
+ * `capacityCost = avgGB × $/GB-month` (steady-state stored capacity, no
+ * lifecycle auto-delete assumed).
+ * Optional Class A (write) / Class B (read) ops are billed per 10,000 ops,
+ * matching the published Standard-class per-10k-operations rate.
+ *
+ * @param inputs Storage volume/config. `enabled=false` → $0 (TEST).
+ * @param rates GCP RateCard; must carry `gcs-standard-storage` (and the ops
+ *   meters when write/read ops are non-zero).
+ * @returns capacityCost + opsCost line items; capacityGb floors to the shared
+ *   DEFAULT_AUDIT_STORAGE_FLOOR_GB when avgGB is unset/0 (no silent $0).
+ * @see https://cloud.google.com/storage/pricing
+ */
 export function estimateGcpAuditStorage(
   inputs: AuditStorageInputs,
   rates: RateCard,

@@ -16,6 +16,26 @@ export type CostDriverRow = {
 
 const CONF_RANK: Record<string, number> = { High: 0, Med: 1, Low: 2 };
 
+/**
+ * Aggregate line items into one row per capability, sorted highest cost first.
+ *
+ * - `amount` per capability = sum of that capability's line-item amounts.
+ * - `percent` = `amount / total * 100`, where `total` is `estimate.totals.expected`
+ *   (the engine's authoritative total, not a re-sum of `items`) so displayed
+ *   percentages always agree with the engine, not just with each other; falls
+ *   back to `sum(items.amount)` only when no `estimate` is given. `total <= 0`
+ *   yields `percent: 0` for every row instead of dividing by zero.
+ * - `confidence` per capability = the *lowest* confidence among its merged
+ *   lines (High=0 < Med=1 < Low=2) — conservative, so one weak meter downgrades
+ *   the whole capability's badge.
+ * - Sort is descending by `amount`; ties keep first-seen order (stable sort).
+ *
+ * @param estimate Source of the engine total and, when `rows` is omitted, the line items.
+ * @param rows Optional override line items (e.g. breakdown rows with $0 placeholders
+ *   merged in) — must sum to the same total as `estimate.lineItems` or percentages
+ *   will not reflect `estimate.totals.expected`.
+ * @returns One row per distinct capability, descending by amount; `[]` when there are no items.
+ */
 export function aggregateCostDrivers(
   estimate: { totals: { expected: number }; lineItems: CostDriverLine[] } | null,
   rows?: CostDriverLine[],

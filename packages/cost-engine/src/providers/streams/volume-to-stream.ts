@@ -5,6 +5,14 @@ import type { AuditStreamInputs } from "../streams/audit-stream.types.ts";
 import type { ResolvedVolumeSignals, VolumeSignalsInput } from "../../core/volume-signals.ts";
 import { resolveVolumeSignals } from "../../core/volume-signals.ts";
 
+/**
+ * Resolve universal volume signals (`accountCount` elasticity, log intensity,
+ * MAU uplift, raw-metric override, BYO stream) into concrete `AuditStreamInputs`.
+ * Pure mapping — no cost math here; @see core/volume-signals.ts `resolveVolumeSignals`
+ * for the elasticity formula itself.
+ * @returns Both the mapped `stream` inputs and the intermediate `resolved` signals
+ * (the latter useful for UI display / debugging elasticity math).
+ */
 export function volumeSignalsToStreamInputs(
   volume: VolumeSignalsInput,
   streamDefaults: Pick<AuditStreamInputs, "enabled" | "region"> &

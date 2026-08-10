@@ -257,6 +257,156 @@ engine is a drift waiting to happen. Prefer importing the engine.
 53 symbols are `export`ed but used only inside their own file, and 5 are
 referenced nowhere at all. See the dead-code appendix.
 
+## REQ-9 — Silent fallbacks must not defeat fail-closed guarantees  `doing`
+
+A read-only architecture sweep (silent fallbacks / persistence drift / loose
+validation / back-compat cruft) found this codebase unusually disciplined —
+most findings below are the exceptions, not a pattern.
+
+### UC-9.1 — A flaky network must not silently unblock a stale-rate export
+
+- **T-9.1.1** `done` `refreshRatesMeta`'s catch cleared `exportFreshness` to
+  `null` on any `/rates` fetch failure; `buildEstimateExport`'s `needsAck`
+  check treats `null` as "no gate needed," so a transient network error
+  silently disabled the fail-closed critical-stale-rates export guarantee.
+  Now sets `requiresAckBeforeExport: true` with a banner naming the real
+  cause (verification failure, not confirmed staleness).
+  *Tests*: `ui-mvp.test.tsx` "a /rates network failure fails closed…".
+
+### UC-9.2 — A negative avgGB must not be treated as "unset"
+
+- **T-9.2.1** `done` `resolveCapacityGb` treated negative `avgGB` the same
+  as omitted (applied the floor with a misleading warning) instead of
+  throwing, inconsistent with the sibling `writeOps`/`readOps` negative
+  checks a few lines below in the same estimators. Now throws.
+  *Tests*: `audit-storage.test.ts` "negative avgGB fails closed…".
+
+### UC-9.3 — AWS/GCP "Refresh rates (live)" must either work or say so plainly  `todo`
+
+- **T-9.3.1** `todo` AWS's live-rates path is structurally non-functional
+  (the real `index.json` is offers-shaped; the code expects
+  products-shaped, so a real fetch always falls through to fallback) and
+  GCP's Billing Catalog needs an API key that's never configured anywhere
+  in the repo. Every "live" refresh for 2 of 3 clouds silently runs on the
+  bundled fallback — not fully silent (a warning string + `ratesSource:
+  "fallback"` are emitted), but the labeled capability doesn't exist.
+  *Tests*: a live-refresh integration test against a fixture matching the
+  **real** `index.json` shape; **edge** GCP with `GCP_BILLING_API_KEY`
+  unset states that plainly rather than degrading quietly.
+
+## REQ-10 — User-editable state must be validated as strictly as the API that consumes it  `doing`
+
+### UC-10.1 — A hand-edited share link (`?s=`) must not reach state setters unchecked
+
+- **T-10.1.1** `done` API boundary: `CreateEstimateRequestSchema`'s
+  `volume.*` numeric fields (`accountCount`, `dataEstateGB`, `vmCount`, …)
+  used bare `z.number().optional()` with no `.nonnegative()`, unlike
+  `assumedEventBytes`/`avgObjectSizeMB` which already had `.positive()`.
+  Downstream estimators throw on negative values too, but that's
+  defense-in-depth, not a substitute for rejecting invalid input at the
+  boundary that actually receives it. Matching `minimum: 0` added to
+  `openapi.yaml`'s `EstimateVolume` schema.
+  *Tests*: `openapi-rest.test.ts` "negative volume fields fail closed…".
+- **T-10.1.2** `todo` `deserializeShareState` only validates
+  `v`/`provider`/`region`; `capabilities` and `volume` pass through via a
+  bare `as ShareState` cast, and `EstimatorPage` then sets numeric state
+  directly from those unvalidated fields with no runtime bounds check. The
+  API schema (T-10.1.1) is the only remaining backstop — it catches a bad
+  value at estimate-submit time, not at share-link-load time.
+  *Tests*: a malformed `?s=` with `volume.dataEstateGB=-999` must be
+  rejected/sanitized before it reaches `setDataEstateGB`, not just later at
+  submit; **edge** a share link with an unexpected `volume` key shape must
+  not crash the page.
+
+## REQ-11 — One rule, one implementation  `doing`
+
+A hardcoded-config sweep found the cost-engine's own `core/`/provider
+constants already disciplined (named, documented, single-source); the real
+duplication was at package **seams** (a value the engine exports getting
+re-declared elsewhere) and hand-mirrored copies within the same package.
+
+### UC-11.1 — A fail-closed meter lookup must not require six synchronized edits
+
+- **T-11.1.1** `done` `requireRate()` was defined byte-for-byte identically
+  in 6 files (`ads`/`dspm`/`egress`/`streams`/`storage`/
+  `registry-serverless` `*.types.ts`). Consolidated into
+  `core/rates/require-rate.ts`; each provider file now re-exports it, so
+  every existing `import { requireRate } from "./xxx.types.ts"` call site
+  kept working unchanged.
+  *Tests*: `core/rates/require-rate.test.ts` (new) + all 6 providers'
+  existing suites, unchanged, still pass against the re-export.
+
+### UC-11.2 — A currency amount must render the same way everywhere
+
+- **T-11.2.1** `done` `usd()`/`Intl.NumberFormat` was reimplemented in 7
+  widgets plus 3 inline calls in `EstimatorPage`, with precision already
+  silently diverging (most omitted `maximumFractionDigits`, one file forced
+  `0`, another forced `2`). Consolidated into `shared/lib/format-currency.ts`.
+  *Tests*: full `apps/web` suite (155 tests) unchanged after the swap.
+
+### UC-11.3 — A documented numeric limit must have one source of truth per layer
+
+- **T-11.3.1** `done` `PROJECTION_MAX_MONTHS=36` was a bare literal in 4
+  places (engine, API zod schema, OpenAPI spec, 2 spots in
+  `ProjectionCharts.tsx`). `packages/api` now imports the real constant
+  from `@cloud-connector/cost-engine` (already a dependency) instead of
+  hardcoding `36`. `apps/web` cannot import cost-engine internals directly
+  (`web-no-engine-internals-or-api-src` boundary rule), so it gets one
+  named, clearly-commented mirror constant replacing its 2 inline literals;
+  `openapi.yaml` gets a comment pointing at the source of truth since YAML
+  can't import a TS value.
+  *Tests*: existing `openapi-rest.test.ts` months>36-rejected case, now
+  validated against the imported constant instead of a re-typed literal.
+
+### UC-11.4 — `ORG_STREAM_PRESETS`/`VOLUME_ORG_PRESETS` must not be two hand-synced tables
+
+- **T-11.4.1** `done` `core/volume-signals.ts`'s own comment already said
+  "same numbers as stream `ORG_STREAM_PRESETS`" — an acknowledged,
+  unenforced duplicate. `providers/streams/audit-stream.types.ts` now
+  re-exports `VOLUME_ORG_PRESETS` (and the shared `OrgPresetId` type) from
+  `core/` under its existing public name instead of keeping an independent
+  copy; the compiler enforces the equality the comment used to assert.
+  *Tests*: `providers/streams/__tests__/audit-stream.test.ts`, unchanged,
+  still passes against the re-export.
+
+### UC-11.5 — A hand-mirrored warning-prefix list must not silently drift  `todo`
+
+- **T-11.5.1** `todo` `apps/web`'s `tfHonestyConstants.ts` is a
+  self-acknowledged manual mirror of cost-engine's
+  `tf-audit-reconciliation.ts` warning prefixes ("Mirror of cost-engine
+  honesty warning prefixes for UI filtering. Keep in sync with…"), forced
+  by the same web/engine boundary rule as T-11.3.1, with no test asserting
+  the two actually stay equal today.
+  *Tests*: a drift-guard test (same idea as `check-openapi-drift.mjs`) that
+  imports both and asserts prefix-for-prefix equality; **edge** adding a new
+  warning prefix to one side without the other must fail the test, not
+  silently ship.
+
+## REQ-12 — The API must be debuggable without adding console.log  `doing`
+
+### UC-12.1 — A request that fails inside a route handler must leave a trace
+
+- **T-12.1.1** `done` `packages/api` had zero per-request observability —
+  only a one-time startup banner and a fatal-config `console.error` before
+  `process.exit(1)`. Added `hono/logger` (already a transitive dependency
+  of `hono` — no new package) for method/path/status/latency access
+  logging on every request. Skipped under `vitest` (`createApp()` is
+  called fresh in nearly every API test) so `pnpm test` output stays
+  readable.
+  *Tests*: manual verification the logger prints on a live request; full
+  API suite (20 tests) confirmed silent under vitest.
+- **T-12.1.2** `todo` If app-level structured logging is wanted later (not
+  just HTTP access logs), adopt `consola` over `pino` — 2.4KB vs 194KB
+  gzip, genuine isomorphic Node+browser support matching this repo's
+  cost-engine-runs-in-both-places design (`pino/browser` is Node-centric
+  and its transport model doesn't work cleanly in edge/bundled contexts).
+  Do **not** add the `debug` package specifically — it was one of ~20
+  packages in a September 2025 npm supply-chain compromise (phishing an
+  npm maintainer account; a malicious version briefly shipped a
+  crypto-wallet-hijacking payload) affecting that exact cluster of small,
+  high-fanout terminal-utility packages. Not urgent today: current
+  footprint is 3 clean, appropriate `console.*` calls total.
+
 ---
 
 ## Sweep record
@@ -327,3 +477,20 @@ rather than left for approval, since they were mine and never shipped:
 The 53 over-exported symbols are not dead — they are used inside their defining
 file but exposed anyway. They widen the package's public surface and make
 refactoring harder than it needs to be. Tracked as REQ-8; not urgent.
+
+## New findings this session — `needs-approval`, awaiting a human decision
+
+Found via a dead-code/unfinished-feature audit (export-usage cross-reference
+across all three packages + `apps/web`, plus a TODO/FIXME grep that returned
+zero hits — this repo doesn't leave inline deferred-work comments). None of
+these have been deleted or finished; they're listed here for approval per
+this repo's standing rule that dead code gets a human decision, not a
+unilateral delete.
+
+| Symbol / area | File | What it looks like | Recommendation |
+| --- | --- | --- | --- |
+| `freezeEstimate` / `loadFrozenEstimate` / `rateCardFromFreeze` / `validateExportSchema` (the rate-pinning "freeze export" module) | `core/rate-pinning.ts` | A complete, well-tested pin/freeze/reload-and-verify cycle, documented in `docs/CLOUD_COST_MODEL.md` as a real use case ("Reproducible export … Frozen rates + modelVersion"). No HTTP route exposes it (`openapi.yaml` has no `/estimates/freeze` or `/reload` path) and `apps/web` never imports cost-engine directly, so the capability is unreachable from any caller today. Only `createInputHash`/`estimateExportFields` (2 of ~8 symbols) are actually consumed, by `create-estimate.ts`. | **FINISH** (add `POST /v1/estimates/freeze` + `/reload` routes and wire the existing "Freeze rates snapshot" UI button to them) **or DELETE** the unreachable half, keeping only the 2 symbols in real use. Genuinely looks like an intentionally-started feature, not an accident — needs a product decision on whether "freeze and reproduce a quote later" ships. |
+| `HowToUseEstimator` | `widgets/HowToUseEstimator/HowToUseEstimator.tsx` | Zero references anywhere outside its own file. `JourneyIntro.tsx`'s own comment says it "replaces long scroll how-to" and reuses the same `data-testid="how-to-use-honesty"` for its closing paragraph — direct evidence it superseded this component during a UX rework, and the old file was never deleted. Its CSS (`.how-to-use__steps`) is dead too. | **DELETE.** High confidence — superseded, zero references, corroborating comment in the replacement component. |
+| `loadLastShareState` (+ `readLocalJson`) | `shared/lib/safe-storage.ts` | The read-back half of a write/read pair: `saveLastShareState` **is** called (`EstimatorPage.tsx` `onCopyShareLink`, as a local backup whenever a share link is copied), but nothing ever calls `loadLastShareState` to restore it — e.g. as a fallback when the `?s=` URL param is missing or truncated. Looks like a safety-net feature that shipped half-wired: write path done, read/restore path never connected. | **FINISH** (call it during bootstrap when no `?s=` param is present) **or DELETE** (drop the read half and `readLocalJson` if the recovery UX isn't wanted) — a small, cheap decision either way. |
+| `AWS_TF_PRESENT` / `GCP_TF_PRESENT` | `providers/{aws,gcp}/capability-meter-map.ts` | Both hardcoded `false`, re-exported publicly, referenced only by their own declaration, the package re-export, and a test that asserts `toBe(false)`. No conditional anywhere reads either flag — `tf-honesty-warnings.ts` reimplements the same "AWS/GCP have no TF inventory" fact via a hardcoded provider-name check instead of consulting these flags. Inert today because both providers' Terraform readiness genuinely is "not yet" (see `docs/CLOUD_COST_MODEL.md`'s provider-readiness table — this is intentional placeholder state, not a mistake), but the flags currently do nothing. | **UNCLEAR** — either wire `tf-honesty-warnings.ts` to branch on the flag (so it becomes meaningful the day AWS/GCP Terraform lands) or remove the flags and keep the hardcoded check. Lower priority than the other three rows. |
+| `capabilityForAffectsField` | `shared/model/tf-grounding.ts` | Zero references anywhere, including within its own file. `shared/lib/affects-chips.ts` (a later addition per its own package-number comment) independently reimplements the same "which volume field maps to which capability/meters" concept with its own field list. The constant it reads (`AUDIT_AFFECTS_FIELD_IDS`) is still used elsewhere — only the function itself is dead. | **DELETE.** High confidence — superseded by `affects-chips.ts`, zero references, the one thing it reads is used elsewhere so nothing else breaks. |

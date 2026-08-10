@@ -2,6 +2,7 @@
  * Projection table — a11y alternative with same numbers as charts (AC/TEST).
  */
 import type { components } from "../../shared/api/generated/openapi.types.ts";
+import { formatUsd as usd } from "../../shared/lib/format-currency.ts";
 
 type ProjectionPoint = components["schemas"]["ProjectionPoint"];
 
@@ -9,14 +10,6 @@ export type ProjectionTableProps = {
   series: ProjectionPoint[] | null;
   provider?: string;
 };
-
-function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(n);
-}
 
 export function ProjectionTable({ series, provider }: ProjectionTableProps) {
   if (!series || series.length === 0) {

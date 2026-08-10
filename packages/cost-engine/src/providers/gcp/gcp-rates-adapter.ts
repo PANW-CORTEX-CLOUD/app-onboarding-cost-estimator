@@ -51,6 +51,12 @@ export type GcpRatesAdapterOptions = {
 /**
  * Parse GCP Billing Catalog SKUs (simplified) into USD unitPrices.
  * Prefers explicit sku.meterId (tests); otherwise no invent.
+ *
+ * Reconstructs the SKU's decimal unit price from the Billing Catalog API's
+ * `Money`-style `{units, nanos}` pair: `unitPrice = units + nanos / 1e9`
+ * (nanos are 1e-9 fractional units, per the API's Money type), taking only
+ * the first tiered rate (no volume-tier discounting modeled).
+ * @see https://cloud.google.com/billing/docs/how-to/get-pricing-information-api
  */
 export function parseGcpBillingCatalog(
   body: GcpCatalogResponse,

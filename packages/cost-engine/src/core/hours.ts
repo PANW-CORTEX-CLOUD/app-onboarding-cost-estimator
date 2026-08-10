@@ -4,6 +4,12 @@
  *
  * Locked default: 730 hours/month. Never silently substitute 720.
  * Peak factor scales throughput recommendations only — not average event volume.
+ *
+ * Verified: 730 = 8,760 hours/year ÷ 12 is the documented billing convention used
+ * by both major hyperscalers for always-on hourly meters (not 720 = 30×24, which
+ * undercounts by omitting the ~0.44 fractional days/month average).
+ * @see https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/pricing-calculator
+ * @see https://aws.amazon.com/calculator/calculator-assumptions/ (AWS Pricing Calculator assumes 730 hours/month = 365×24/12)
  */
 
 /** Industry average month hours — locked core default (AC). */

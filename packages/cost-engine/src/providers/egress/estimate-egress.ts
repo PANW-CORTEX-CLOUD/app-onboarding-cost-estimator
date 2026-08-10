@@ -7,6 +7,11 @@ import { estimateAwsEgress } from "../aws/aws-egress-estimator.ts";
 import { estimateGcpEgress } from "../gcp/gcp-egress-estimator.ts";
 import type { EgressInputs, EgressResult } from "./egress.types.ts";
 
+/**
+ * Route to the per-provider egress estimator (Azure/AWS/GCP); each wraps the
+ * shared formula in `estimate-egress-core.ts` with its own meter id + zone cards.
+ * @throws when `rates.provider` doesn't match `provider`.
+ */
 export function estimateEgress(
   provider: CloudProvider,
   inputs: EgressInputs,

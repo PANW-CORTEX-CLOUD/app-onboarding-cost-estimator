@@ -3,6 +3,7 @@
  * Never assume free cross-cloud; unknown zones exclude + warn (EDGE).
  */
 import type { Confidence, LineItem } from "../../core/models/estimate.types.ts";
+export { requireRate } from "../../core/rates/require-rate.ts";
 
 export type EgressInputs = {
   /** AC: "Include estimated egress" toggle — false → $0. */
@@ -46,21 +47,17 @@ export type EgressResult = {
   excludedUnknownZone: boolean;
 };
 
-export function requireRate(
-  unitPrices: Record<string, number>,
-  meterId: string,
-): number {
-  const p = unitPrices[meterId];
-  if (p === undefined) {
-    throw new Error(`missing unit price for meter '${meterId}' (no invented $0)`);
-  }
-  return p;
-}
-
+/** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */
 export function sumAmounts(items: LineItem[]): number {
   return items.reduce((s, i) => s + i.amount, 0);
 }
 
+/**
+ * Resolve billed egress volume: explicit `egressGB` wins; otherwise falls
+ * back to `auditStreamIngressGBPerMonth` (audit stream's ingress volume,
+ * assumed egressed 1:1 to Cortex). Neither present → fail closed.
+ * @throws when `egressGB` is negative, or when both inputs are unset.
+ */
 export function resolveEgressGb(inputs: EgressInputs): number {
   if (inputs.egressGB !== undefined) {
     if (inputs.egressGB < 0) {

@@ -15,11 +15,21 @@ export type CachedEstimate = {
   cachedAt: string;
 };
 
+/** Overwrite the single last-estimate slot (one cache entry total, not per-provider). */
 export function saveEstimateCache(entry: CachedEstimate): void {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(KEY, JSON.stringify(entry));
 }
 
+/**
+ * Read back the last cached estimate. There is no time-based expiry here —
+ * "stale" is judged elsewhere from `ratesAsOf`/`modelVersion` on the cached
+ * estimate itself, not from `cachedAt`. The only invalidation this function
+ * does is a provider match: since the cache holds one entry, an estimate
+ * cached for a different provider is treated as absent (`null`) rather than
+ * returned as a mismatched fallback.
+ * @param provider When given, only return the cache if it was cached for this provider.
+ */
 export function loadEstimateCache(
   provider?: CloudProvider,
 ): CachedEstimate | null {

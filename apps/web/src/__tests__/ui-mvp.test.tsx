@@ -150,6 +150,13 @@ describe("package 19 — UI MVP acceptance", () => {
     clearEstimateCache();
     sessionStorage.setItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY, "1");
     window.history.replaceState({}, "", "/");
+    // TODO(test-isolation): ResultFlipCard persists its high/low face choice
+    // to a sessionStorage key this beforeEach doesn't clear, so a test that
+    // flips it (e.g. via result-flip-toggle) leaks that preference into
+    // whichever test runs next. Assert against the stable result-flip-card
+    // wrapper testid rather than cost-drivers/cost-breakdown specifically,
+    // or sessionStorage.clear() here once a test intentionally depends on
+    // the persisted face across a re-render.
   });
   afterEach(() => cleanup());
 
@@ -213,6 +220,49 @@ describe("package 19 — UI MVP acceptance", () => {
       ackCriticalStale: true,
     });
     expect(ok.provider).toBe("azure");
+  });
+
+  it("a /rates network failure fails closed (requires ack) instead of silently allowing export", async () => {
+    const client = createMockClient();
+    // EDGE: refreshRatesMeta's GET("/rates") call fails (network blip, 500,
+    // timeout) right after a successful estimate. This must not be treated
+    // as "freshness unknown, therefore fine" - the export ack gate should
+    // still engage, exactly as it would for a confirmed critical-stale rate.
+    (client.GET as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string) => {
+        if (path === "/rates") throw new Error("network error");
+        return {
+          data: {
+            provider: "azure",
+            capabilities: [
+              {
+                capability: "auditLogs",
+                meterId: "azure-audit",
+                confidence: "Med" as const,
+                sourceUrl: "https://example.com",
+              },
+            ],
+          },
+          error: undefined,
+          response: new Response(null, { status: 200 }),
+        };
+      },
+    );
+    render(<App client={client} />);
+    fireEvent.click(screen.getByTestId("run-estimate"));
+    // result-flip-card (not cost-drivers specifically) is the stable signal
+    // that the estimate rendered - which face is showing is a sessionStorage-
+    // persisted user preference independent of this test.
+    await waitFor(() => {
+      expect(screen.getByTestId("result-flip-card")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("ack-critical-stale-checkbox")).toBeInTheDocument();
+    });
+    expect(
+      (screen.getByTestId("ack-critical-stale-checkbox") as HTMLInputElement)
+        .checked,
+    ).toBe(false);
   });
 
   it("empty advanced numeric field uses preset not silent zero; invalid fails closed", () => {

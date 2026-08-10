@@ -50,6 +50,9 @@ export type AwsRatesAdapterOptions = {
 /**
  * Parse a simplified AWS Price List document into unitPrices.
  * Expects products keyed with attributes.meterId and OnDemand USD pricePerUnit.USD.
+ * Last dimension/term wins per SKU (no averaging across tiers); non-numeric or
+ * non-USD prices are dropped by `filterUsdUnitPrices`, never coerced to 0.
+ * @see https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html
  */
 export function parseAwsPriceList(
   body: AwsPriceListResponse,
@@ -78,6 +81,13 @@ export function parseAwsPriceList(
   return filterUsdUnitPrices(raw);
 }
 
+/**
+ * RatesAdapter for AWS: tries the live Price List index (connectivity check only —
+ * unit tests inject a full mock body; the real index.json is offers-shaped, not
+ * products-shaped, so a real fetch currently always falls through to fallback),
+ * then falls back to the bundled `fallback-prices.json` for `us-east-1`.
+ * Never invents a $0 rate for a missing/unparseable meter (fail closed).
+ */
 export function createAwsRatesAdapter(
   opts: AwsRatesAdapterOptions = {},
 ): RatesAdapter {

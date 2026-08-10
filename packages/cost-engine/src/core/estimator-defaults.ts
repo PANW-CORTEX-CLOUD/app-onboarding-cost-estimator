@@ -10,9 +10,11 @@
  * should also surface in the estimate's assumption snapshot so the customer
  * can see what was guessed on their behalf.
  *
- * TODO(REQ-5): split these into CONVENTION and ASSUMPTION groups and feed the
- * ASSUMPTION values into the results assumption snapshot automatically, rather
- * than relying on each widget to remember to display them.
+ * The CONVENTION/ASSUMPTION split is now machine-readable rather than a comment:
+ * see core/applied-defaults.ts, where each field carries its kind and the
+ * rationale shown to the customer. `DefaultsTracker` records every default an
+ * estimate actually substituted, and the UI renders that list, so a default
+ * added here shows up without any widget being edited.
  */
 
 /** CONVENTION — the hour count cloud providers bill a "month" as (365×24/12). */

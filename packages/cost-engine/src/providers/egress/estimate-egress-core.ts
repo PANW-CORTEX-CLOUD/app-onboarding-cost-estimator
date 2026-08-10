@@ -29,6 +29,26 @@ export type EgressProviderConfig = {
   govZones: readonly EgressZoneCard[];
 };
 
+/**
+ * Egress / cross-cloud bandwidth monthly estimate for one provider.
+ *
+ * `ratePerGb = baseRate(meterId) × zone.rateMultiplier`
+ * `billedEgressGB = resolveEgressGb(inputs) × (privateLinkOrVpcEndpoint ? privatePathEgressFactor : 1)`
+ * `amount = billedEgressGB × ratePerGb`
+ *
+ * Zone card is looked up from `config.govZones` when the source region looks
+ * like Gov/restricted, else `config.commercialZones` (@see egress-zone-cards.ts).
+ * Unrecognized `destinationZone` excludes the line and warns rather than
+ * inventing a free/default rate (fail closed).
+ *
+ * @param inputs.alreadyBilledElsewhere Skip entirely (returns $0, no line item)
+ * to avoid double-counting egress a different meter (stream/registry) already covers.
+ * @returns $0 result when `inputs.enabled` is false, when `alreadyBilledElsewhere`,
+ * or when the destination zone is unrecognized (`excludedUnknownZone: true`).
+ * @throws when `rates.provider` doesn't match `provider`; when a cross-cloud
+ * zone card somehow carries a non-positive multiplier (never-free invariant);
+ * when `privatePathEgressFactor` is outside 0–1; or when the base meter price is missing.
+ */
 export function estimateEgressForProvider(
   provider: CloudProvider,
   config: EgressProviderConfig,

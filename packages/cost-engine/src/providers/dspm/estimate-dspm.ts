@@ -7,6 +7,11 @@ import { estimateAwsDspm } from "../aws/aws-dspm-estimator.ts";
 import { estimateGcpDspm } from "../gcp/gcp-dspm-estimator.ts";
 import type { DspmInputs, DspmResult } from "./dspm.types.ts";
 
+/**
+ * Route to the per-provider DSPM estimator (Azure/AWS/GCP); each wraps the
+ * shared band formula in `estimate-dspm-core.ts` with its own meter ids.
+ * @throws when `rates.provider` doesn't match `provider`.
+ */
 export function estimateDspm(
   provider: CloudProvider,
   inputs: DspmInputs,

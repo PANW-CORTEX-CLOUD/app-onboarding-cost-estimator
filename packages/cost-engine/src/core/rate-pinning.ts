@@ -103,6 +103,15 @@ function sortKeys(value: unknown): unknown {
 
 /**
  * FNV-1a 32-bit hex hash of canonical JSON (pure TS — no node:crypto).
+ *
+ * Verified against the FNV-1a spec: XOR-then-multiply per unit (not multiply-then-XOR,
+ * which would be FNV-1), offset basis `0x811c9dc5` and prime `0x01000193` are the
+ * standard 32-bit FNV constants. One intentional deviation: this hashes UTF-16 code
+ * units (`charCodeAt`), not UTF-8 bytes, so it is NOT interoperable with a reference
+ * FNV-1a implementation for non-ASCII input — that's fine here since the hash is only
+ * ever compared against itself (input-change detection for freeze/reload), never
+ * against an externally computed FNV-1a value.
+ * @see http://www.isthe.com/chongo/tech/comp/fnv/
  */
 export function createInputHash(inputs: unknown): string {
   const s = canonicalJson(inputs);

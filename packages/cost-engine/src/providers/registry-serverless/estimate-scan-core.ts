@@ -30,6 +30,15 @@ export type ServerlessMeters = {
  * Registry scan: bill incremental pull bandwidth only.
  * Same-region → $0 bandwidth (TEST); cross-region → pullGB × rate.
  */
+/**
+ * `amount = crossRegionPull ? registryPullGb(inputs) × rate : 0`
+ * (@see registryPullGb in scan.types.ts). Same-region pulls are modeled as
+ * $0 bandwidth; only cross-region pull is billed. Never charges existing
+ * registry storage — incremental pull bandwidth only.
+ * @returns Empty $0 result when `inputs.enabled` is false.
+ * @throws when `rates.provider` doesn't match `provider`, or the pull-bandwidth
+ * meter price is missing.
+ */
 export function estimateRegistryScanForProvider(
   provider: CloudProvider,
   meters: RegistryMeters,
@@ -90,6 +99,13 @@ export function estimateRegistryScanForProvider(
 /**
  * Serverless scan: bill incremental package scan ops only (not function storage).
  * Cost scales with packageCount × scansPerMonth (million-ops style rate).
+ */
+/**
+ * `amount = (serverlessScanOps(inputs) / 1_000_000) × rate`
+ * (@see serverlessScanOps in scan.types.ts — ops meter, GB not billed).
+ * Never charges existing function/package storage — incremental scan ops only.
+ * @returns Empty $0 result when `inputs.enabled` is false.
+ * @throws when `rates.provider` doesn't match `provider`, or the ops meter price is missing.
  */
 export function estimateServerlessScanForProvider(
   provider: CloudProvider,

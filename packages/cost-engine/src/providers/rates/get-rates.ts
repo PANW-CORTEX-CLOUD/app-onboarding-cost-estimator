@@ -35,6 +35,7 @@ const defaultAdapters = (): Record<CloudProvider, RatesAdapter> => ({
   gcp: createGcpRatesAdapter(),
 });
 
+/** Stamp `ageDays`/`freshness`/banner onto a `RatesResult` relative to `now`, deduping the banner into `warnings`. */
 function withFreshness(
   result: RatesResult,
   now: Date,
@@ -60,8 +61,19 @@ function withFreshness(
 
 /**
  * Resolve rates for a provider + region.
- * Cache hit → ratesSource "cache" (skips network). Expired → refetch.
- * API failure inside adapters → fallback + stale banner via freshness.
+ *
+ * Precedence: process-wide 24h cache (@see rates-cache.ts `RATES_CACHE_TTL_MS`)
+ * unless `opts.forceLive`, → provider adapter (which itself tries live pricing
+ * API then falls back to its bundled fallback-prices.json on failure/empty
+ * response). A cache hit reports `ratesSource: "cache"` and skips network
+ * entirely; an expired/missing entry always calls the adapter and re-caches
+ * the result under `ratesCacheKey(provider, region)`.
+ *
+ * Every returned unit price is validated finite/non-negative before caching —
+ * fails closed (throws) rather than caching a corrupt/partial price row.
+ * @param provider Any string; only "azure"/"aws"/"gcp" resolve real rates —
+ * anything else returns an empty fallback RateCard + warning (no invented meters).
+ * @throws when an adapter returns a non-finite or negative unit price.
  */
 export async function getRates(
   provider: string,
@@ -123,6 +135,10 @@ export async function getRates(
   return withFreshness(normalized, now, normalized.ratesSource);
 }
 
+/**
+ * Look up a meter's price without inventing a $0 default.
+ * @returns `undefined` when the meter is absent (distinct from a real $0 price).
+ */
 export function lookupUnitPrice(
   rates: RateCard,
   meterId: string,

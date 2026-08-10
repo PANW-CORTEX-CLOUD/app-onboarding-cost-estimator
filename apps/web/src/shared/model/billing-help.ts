@@ -111,6 +111,7 @@ const DSPM: Record<CloudProvider, BillingHelpContent> = {
   },
 };
 
+/** Static copy lookup by provider + capability family — no calculation, no amounts. */
 export function getBillingHelp(
   provider: CloudProvider,
   family: BillingHelpFamily,

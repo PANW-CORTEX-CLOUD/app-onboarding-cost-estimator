@@ -8,6 +8,8 @@ import { colorForCapability } from "../../shared/model/chart-colors.ts";
 import { capabilityLabel } from "../../shared/model/capability-labels.ts";
 import { ProjectionTable } from "../ProjectionTable/ProjectionTable.tsx";
 import { RatesFreshnessBanner } from "../RatesFreshnessBanner/RatesFreshnessBanner.tsx";
+import { formatUsd } from "../../shared/lib/format-currency.ts";
+import { PROJECTION_MAX_MONTHS } from "../../shared/model/projection-limits.ts";
 
 type ProjectionResponse = components["schemas"]["ProjectionResponse"];
 type FreshnessLevel = "fresh" | "warn" | "critical" | "stale-cache";
@@ -34,12 +36,9 @@ type HoverInfo = {
   confidence: string;
 } | null;
 
+/** Whole-dollar precision for compact chart axis/legend labels. */
 function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(n);
+  return formatUsd(n, 0);
 }
 
 export function ProjectionCharts({
@@ -97,11 +96,16 @@ export function ProjectionCharts({
           <input
             type="number"
             min={1}
-            max={36}
+            max={PROJECTION_MAX_MONTHS}
             value={months}
             data-testid="projection-months"
             onChange={(e) =>
-              onMonthsChange(Math.min(36, Math.max(1, Number(e.target.value) || 1)))
+              onMonthsChange(
+                Math.min(
+                  PROJECTION_MAX_MONTHS,
+                  Math.max(1, Number(e.target.value) || 1),
+                ),
+              )
             }
           />
         </label>

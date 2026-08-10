@@ -223,6 +223,9 @@ function detectForeignCsv(headerLine: string, errors: string[]): boolean {
 
 /**
  * Parse inputs CSV. Fail closed on unknown keys, foreign shapes, partial volume.
+ * `keyCount` (on success) counts data rows only — every parsed `key,value` line
+ * except the `format`/`formatVersion` metadata rows — for a "N settings imported"
+ * style confirmation; it is not validated against an expected total.
  */
 export function parseEstimatorInputsCsv(
   text: string,

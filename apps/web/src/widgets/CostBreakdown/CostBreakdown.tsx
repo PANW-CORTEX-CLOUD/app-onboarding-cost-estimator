@@ -9,6 +9,7 @@ import {
   type BreakdownRow,
 } from "../../shared/lib/capability-breakdown.ts";
 import { capabilityLabel } from "../../shared/model/capability-labels.ts";
+import { formatUsd as usd } from "../../shared/lib/format-currency.ts";
 
 export type CostBreakdownProps = {
   estimate: EstimateResponse | null;
@@ -17,13 +18,6 @@ export type CostBreakdownProps = {
   breakdownRows?: BreakdownRow[];
   discoveryOnlyEmpty?: boolean;
 };
-
-function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(n);
-}
 
 export function CostBreakdown({
   estimate,
@@ -48,7 +42,11 @@ export function CostBreakdown({
     );
   }
 
-  const rows =
+  // Explicit BreakdownRow[] annotation: without it, TS infers the fallback
+  // branch's object literal as its own narrower type (no placeholder/note
+  // keys at all, not even as absent-optional), and the union with
+  // BreakdownRow[] then rejects `li.placeholder`/`li.note` access below.
+  const rows: BreakdownRow[] =
     rowsProp ??
     (capabilities
       ? buildBreakdownRows(estimate, capabilities, warnings)

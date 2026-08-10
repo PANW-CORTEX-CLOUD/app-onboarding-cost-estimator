@@ -90,6 +90,7 @@ export const AZURE_MODELED_NO_TF_WARNING_PREFIX =
 export const NO_TF_INVENTORY_WARNING =
   "no TF inventory — modeled defaults";
 
+/** Membership test against `AZURE_AUDIT_ONLY_METER_ALLOWLIST` (billable + optional ops meters). */
 export function isAzureAuditOnlyMeterAllowed(meterId: string): boolean {
   return (AZURE_AUDIT_ONLY_METER_ALLOWLIST as readonly string[]).includes(
     meterId,

@@ -35,8 +35,16 @@ const CAP_FLAG_TO_MODELED: Array<{
 
 /**
  * Append at most one Azure modeled warning and one AWS/GCP no-TF note.
- * Azure audit-only (no modeled caps on) → no modeled/no-TF warning.
- * Discovery alone does not trigger modeled spam.
+ * AWS/GCP: no connector TF inventory exists yet, so every enabled capability
+ * is flagged as modeled-not-TF-verified (one combined note, deduped).
+ * Azure: only capabilities outside `AZURE_MODELED_NO_TF_CAPABILITIES` (the
+ * audit stream + storage) are TF-grounded; audit-only (no modeled caps on)
+ * → no warning. Discovery alone does not trigger modeled spam (it has no
+ * meter at all — @see create-estimate.ts).
+ * Mutates `warnings` in place (push-only; does not dedupe pre-existing entries
+ * from other sources beyond the exact-match/prefix checks it performs itself).
+ * @throws when an enabled Azure capability id isn't in the known modeled set
+ * (fail closed if the two maps drift apart).
  */
 export function appendTfHonestyWarnings(
   provider: CloudProvider,

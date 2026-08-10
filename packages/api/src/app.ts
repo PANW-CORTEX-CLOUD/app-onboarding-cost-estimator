@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { logger } from "hono/logger";
 import { swaggerUI } from "@hono/swagger-ui";
 import {
   modelVersion,
@@ -96,6 +97,16 @@ function meterMapFor(provider: "azure" | "aws" | "gcp") {
 
 export function createApp(): Hono {
   const app = new Hono();
+
+  // Request access log (method/path/status/latency) - the only observability
+  // this API had was a one-time startup banner and a fatal-error console.error;
+  // there was no per-request trace at all. hono/logger is already a transitive
+  // dependency of hono itself (zero new package). Skipped under vitest so
+  // `pnpm test` output stays readable - createApp() is called fresh in nearly
+  // every API test.
+  if (!process.env.VITEST) {
+    app.use("*", logger());
+  }
 
   app.get("/v1/health", (c) =>
     c.json({

@@ -19,7 +19,11 @@ export const GOLDEN_STORAGE_AVG_GB = 100;
 
 export const GOLDEN_ADS_INPUTS = {
   enabled: true as const,
-  mode: "cloud" as const,
+  // BUG FIX: was "cloud" (lowercase) — AdsMode is "Cloud" | "Outpost"; the
+  // mismatch was masked at runtime (estimate-ads-core only special-cases
+  // === "Outpost", so any other string fell through to the Cloud path) but
+  // broke type-checking wherever this fixture is spread into AdsInputs.
+  mode: "Cloud" as const,
   vmCount: 10,
   avgUsedDiskGB: 100,
   scansPerMonth: 4,

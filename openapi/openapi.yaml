@@ -270,39 +270,54 @@ components:
       properties:
         accountCount:
           type: number
+          minimum: 0
         monthlyActiveUsers:
           type: number
+          minimum: 0
         logIntensity:
           type: string
           enum: [low, medium, high]
         ingressGBPerDay:
           type: number
+          minimum: 0
         peakMBps:
           type: number
+          minimum: 0
         peakEventsPerSec:
           type: number
+          minimum: 0
         byoManagedStream:
           type: boolean
         avgStoredGB:
           type: number
+          minimum: 0
         vmCount:
           type: number
+          minimum: 0
         avgUsedDiskGB:
           type: number
+          minimum: 0
         scansPerMonth:
           type: number
+          minimum: 0
         dataEstateGB:
           type: number
+          minimum: 0
         pctScanned:
           type: number
+          minimum: 0
         imageCount:
           type: number
+          minimum: 0
         avgImageGB:
           type: number
+          minimum: 0
         packageCount:
           type: number
+          minimum: 0
         egressGB:
           type: number
+          minimum: 0
         overrideStreamMetrics:
           type: boolean
           description: >
@@ -507,6 +522,10 @@ components:
         months:
           type: integer
           minimum: 1
+          # Mirrors packages/cost-engine/src/core/project-costs.ts
+          # PROJECTION_MAX_MONTHS - the canonical value the API's zod schema
+          # (packages/api/src/schemas.ts) validates against. YAML can't import
+          # a TS constant, so this is a manually-kept-in-sync literal.
           maximum: 36
           description: Horizon 1–36 months (default 12 in UI)
         annualGrowthPercent:

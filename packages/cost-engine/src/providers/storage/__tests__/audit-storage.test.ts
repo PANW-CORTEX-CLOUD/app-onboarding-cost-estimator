@@ -38,8 +38,8 @@ const awsRates: RateCard = {
   currency: "USD",
   unitPrices: {
     "s3-standard-storage": 0.023,
-    "s3-put-10k": 0.005,
-    "s3-get-10k": 0.0004,
+    "s3-put-1k": 0.005,
+    "s3-get-1k": 0.0004,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
 };
@@ -187,5 +187,30 @@ describe("package 07 — EDGE", () => {
         { ...azureRates, unitPrices: {} },
       ),
     ).toThrow(/missing unit price/);
+  });
+
+  it("negative avgGB fails closed instead of silently applying the floor", () => {
+    // A negative avgGB is invalid input, not "unset" - it must not be
+    // treated the same as an omitted value (which legitimately floors to
+    // DEFAULT_AUDIT_STORAGE_FLOOR_GB). Matches the writeOps/readOps
+    // negative check a few lines below in each provider estimator.
+    expect(() =>
+      estimateAzureAuditStorage(
+        { enabled: true, region: "eastus", avgGB: -500 },
+        azureRates,
+      ),
+    ).toThrow(/avgGB must be non-negative/);
+    expect(() =>
+      estimateAwsAuditStorage(
+        { enabled: true, region: "us-east-1", avgGB: -1 },
+        awsRates,
+      ),
+    ).toThrow(/avgGB must be non-negative/);
+    expect(() =>
+      estimateGcpAuditStorage(
+        { enabled: true, region: "us-central1", avgGB: -1 },
+        gcpRates,
+      ),
+    ).toThrow(/avgGB must be non-negative/);
   });
 });

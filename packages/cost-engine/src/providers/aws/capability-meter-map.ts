@@ -140,6 +140,12 @@ export const awsCapabilityMeterMap: readonly CapabilityMeterRow[] = [
 export const AWS_PRICE_LIST_API_URL =
   "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html";
 
+/**
+ * Fail-closed coverage check: every `REQUIRED_CAPABILITIES` id must have at
+ * least one row in `awsCapabilityMeterMap` (rows with `meterId: "none"` count
+ * as intentionally-modeled $0, e.g. `discovery`). Throws on the first gap so a
+ * capability can never silently ship with no AWS meter binding.
+ */
 export function assertAwsMapCoversRequiredCapabilities(): void {
   const present = new Set(awsCapabilityMeterMap.map((r) => r.capability));
   for (const id of REQUIRED_CAPABILITIES) {

@@ -2,6 +2,11 @@
  * Multi-cloud volume signals (package 12).
  * Universal inputs → resolved stream ingress/peak via elasticities in CLOUD_COST_MODEL.md.
  * Lives in core (provider-agnostic); log-category multipliers are keyed by CloudProvider only.
+ *
+ * These are internal business-rule elasticities (not a cloud provider's published pricing
+ * formula) — SSOT is `docs/CLOUD_COST_MODEL.md` § "Volume elasticities (package 12)"; the
+ * constants below (REFERENCE_ACCOUNT_COUNT, LOG_INTENSITY_FACTOR, LOG_CATEGORY_SETS,
+ * MAU_*) must be kept 1:1 with that table.
  */
 import type { CloudProvider } from "./models/estimate.types.ts";
 
@@ -188,8 +193,19 @@ export function logCategoryMultiplier(
 
 /**
  * Resolve universal volume signals → stream ingress/peak.
- * Elasticities: accountScale × logIntensity × logCategoryMultiplier × optional MAU uplift.
- * Raw metrics override computed fields. BYO sets zeroManagedStreamCapacity.
+ *
+ * Formula: `resolved = basePreset × accountScale × logIntensity × logCategoryMultiplier × (1 + mauUplift)`,
+ * applied independently to `ingressGBPerDay`, `peakMBps`, `peakEventsPerSec` — see
+ * per-factor docs on {@link REFERENCE_ACCOUNT_COUNT}, {@link LOG_INTENSITY_FACTOR},
+ * {@link logCategoryMultiplier}, {@link MAU_UPLIFT_PER_UNIT}.
+ * Raw metrics override computed fields per-key (not all-or-nothing). BYO sets
+ * zeroManagedStreamCapacity; ingress/peak values are still returned (stream
+ * estimators, not this function, are responsible for zeroing capacity lines).
+ *
+ * @returns `warnings` is always `[]` here by design — this function only resolves
+ * signals; capacity/billing-minimum warnings (e.g. "zero ingress still bills 1 shard")
+ * are the responsibility of the provider stream estimators that consume this output,
+ * since only they know their own minimums.
  */
 export function resolveVolumeSignals(
   input: VolumeSignalsInput,

@@ -56,6 +56,7 @@ export interface CapabilityMeterRow {
   notes?: string;
 }
 
+/** Every capability a provider's meter map must cover — snapshot-tested 1:1 against docs/CLOUD_COST_MODEL.md. */
 export const REQUIRED_CAPABILITIES: readonly CapabilityId[] = [
   "discovery",
   "audit_logs",

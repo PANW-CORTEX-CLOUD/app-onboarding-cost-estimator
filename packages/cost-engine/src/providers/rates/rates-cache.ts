@@ -17,10 +17,18 @@ export type RatesCache = {
   size: () => number;
 };
 
+/** Cache key: `provider:region` with region trimmed + lowercased (case/whitespace-insensitive). */
 export function ratesCacheKey(provider: string, region: string): string {
   return `${provider}:${region.trim().toLowerCase()}`;
 }
 
+/**
+ * In-memory rates cache. An entry is fresh while `now - storedAtMs <= ttlMs`;
+ * strictly greater than `ttlMs` is expired (so a hit exactly at the TTL
+ * boundary still counts as fresh). Expired entries are evicted lazily on
+ * `get` (self-healing — no background sweep needed).
+ * @param opts.ttlMs Default `RATES_CACHE_TTL_MS` (24h).
+ */
 export function createRatesCache(
   opts: { ttlMs?: number } = {},
 ): RatesCache {
