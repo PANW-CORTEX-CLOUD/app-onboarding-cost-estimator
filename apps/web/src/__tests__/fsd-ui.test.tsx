@@ -399,20 +399,26 @@ describe("last-shared-state restore on cold load", () => {
     });
   });
 
-  it("falls back to the demo preset when the saved blob is malformed", async () => {
-    // EDGE: written by an older build with a different shape, or hand-edited.
-    // It must not reach a state setter - the demo preset (azure) wins instead
-    // of the page restoring a negative estate size.
+  it("restores the sound parts of a partly-invalid saved blob and drops the rest", async () => {
+    // EDGE: written by an older build, or hand-edited. validateShareState is
+    // an allowlist, so a bad field is dropped and named rather than sinking
+    // the whole restore - the provider still comes back, the negative estate
+    // does not reach a state setter.
     saveLastShareState({
       v: 1,
       provider: "gcp",
       region: "us-central1",
       capabilities: { auditLogs: true },
-      volume: { dataEstateGB: -999 },
+      volume: { accountCount: 7, dataEstateGB: -999 },
     });
     render(<App client={createMockClient()} />);
     await waitFor(() => {
-      expect(readProviderFromSearch(window.location.search)).toBe("azure");
+      expect(readProviderFromSearch(window.location.search)).toBe("gcp");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("share-message")).toHaveTextContent(
+        /Ignored invalid dataEstateGB/,
+      );
     });
   });
 });

@@ -31,6 +31,7 @@ import { bandFromExpected } from "./dspm/dspm.types.ts";
 import { appendTfHonestyWarnings } from "./tf-honesty-warnings.ts";
 import {
   DEFAULT_ACCOUNT_COUNT,
+  DEFAULT_AVG_OBJECT_SIZE_MB,
   DEFAULT_ADS_SCANS_PER_MONTH,
   DEFAULT_AVG_PACKAGE_GB,
   DEFAULT_DSPM_PCT_SCANNED,
@@ -45,6 +46,10 @@ import {
   type TfMode,
 } from "./tf/tf-feature-manifest.ts";
 import { assertCapabilitiesAreSized } from "./capability-drivers.ts";
+import {
+  DefaultsTracker,
+  type AppliedDefault,
+} from "../core/applied-defaults.ts";
 import { CAPABILITY_FLAG_IDS } from "./tf/tf-feature-manifest.ts";
 import {
   confidenceForVerification,
@@ -130,6 +135,11 @@ export type CreateEstimateResponse = EstimateResult & {
   /** Capabilities dropped because the Terraform will not deploy them. */
   excludedCapabilities: Array<{ capability: string; reason: string }>;
   /**
+   * Defaults the estimator substituted because the caller supplied nothing.
+   * Lets a reader tell their own numbers from the tool's guesses.
+   */
+  appliedDefaults: AppliedDefault[];
+  /**
    * The exact card these line items were priced from.
    *
    * Exposed so a caller that wants to freeze this estimate
@@ -171,7 +181,15 @@ export async function createEstimate(
   req: CreateEstimateRequest,
 ): Promise<CreateEstimateResponse> {
   const { provider, region } = req;
-  const monthHours = req.monthHours ?? DEFAULT_MONTH_HOURS_VALUE;
+  // Declared before the first resolve(): every default substituted below is
+  // recorded, so the response can show the customer which numbers they chose
+  // and which the estimator guessed.
+  const defaults = new DefaultsTracker();
+  const monthHours = defaults.resolve(
+    "monthHours",
+    req.monthHours,
+    DEFAULT_MONTH_HOURS_VALUE,
+  );
   if (monthHours <= 0) {
     throw new Error(`monthHours must be > 0, got ${monthHours}`);
   }
@@ -213,7 +231,11 @@ export async function createEstimate(
     );
   }
 
-  const accountCount = vol.accountCount ?? DEFAULT_ACCOUNT_COUNT;
+  const accountCount = defaults.resolve(
+    "volume.accountCount",
+    vol.accountCount,
+    DEFAULT_ACCOUNT_COUNT,
+  );
   const overrideStreamMetrics = vol.overrideStreamMetrics === true;
   const resolvedVol = resolveVolumeSignals({
     provider,
@@ -289,8 +311,16 @@ export async function createEstimate(
         region,
         vmCount: vol.vmCount ?? 0,
         avgUsedDiskGB: vol.avgUsedDiskGB ?? 0,
-        scansPerMonth: vol.scansPerMonth ?? DEFAULT_ADS_SCANS_PER_MONTH,
-        snapshotLifetimeHours: DEFAULT_SNAPSHOT_LIFETIME_HOURS,
+        scansPerMonth: defaults.resolve(
+          "volume.scansPerMonth",
+          vol.scansPerMonth,
+          DEFAULT_ADS_SCANS_PER_MONTH,
+        ),
+        snapshotLifetimeHours: defaults.resolve(
+          "snapshotLifetimeHours",
+          undefined,
+          DEFAULT_SNAPSHOT_LIFETIME_HOURS,
+        ),
         monthHours,
       },
       rates,
@@ -306,9 +336,21 @@ export async function createEstimate(
         enabled: true,
         region,
         dataEstateGB: vol.dataEstateGB ?? 0,
-        pctScanned: vol.pctScanned ?? DEFAULT_DSPM_PCT_SCANNED,
-        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
-        avgObjectSizeMB: vol.avgObjectSizeMB,
+        pctScanned: defaults.resolve(
+          "volume.pctScanned",
+          vol.pctScanned,
+          DEFAULT_DSPM_PCT_SCANNED,
+        ),
+        scansPerMonth: defaults.resolve(
+          "volume.scansPerMonth",
+          vol.scansPerMonth,
+          DEFAULT_SCANS_PER_MONTH,
+        ),
+        avgObjectSizeMB: defaults.resolve(
+          "volume.avgObjectSizeMB",
+          vol.avgObjectSizeMB,
+          DEFAULT_AVG_OBJECT_SIZE_MB,
+        ),
       },
       rates,
     );
@@ -324,7 +366,11 @@ export async function createEstimate(
         region,
         imageCount: vol.imageCount ?? 0,
         avgImageGB: vol.avgImageGB ?? 0,
-        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
+        scansPerMonth: defaults.resolve(
+          "volume.scansPerMonth",
+          vol.scansPerMonth,
+          DEFAULT_SCANS_PER_MONTH,
+        ),
         crossRegionPull: false,
       },
       rates,
@@ -340,8 +386,16 @@ export async function createEstimate(
         enabled: true,
         region,
         packageCount: vol.packageCount ?? 0,
-        avgPackageGB: DEFAULT_AVG_PACKAGE_GB,
-        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
+        avgPackageGB: defaults.resolve(
+          "volume.avgPackageGB",
+          undefined,
+          DEFAULT_AVG_PACKAGE_GB,
+        ),
+        scansPerMonth: defaults.resolve(
+          "volume.scansPerMonth",
+          vol.scansPerMonth,
+          DEFAULT_SCANS_PER_MONTH,
+        ),
       },
       rates,
     );
@@ -446,6 +500,7 @@ export async function createEstimate(
     },
     tfMode,
     excludedCapabilities: gate.excluded,
+    appliedDefaults: defaults.list(),
     rateCard: rates,
   };
 }

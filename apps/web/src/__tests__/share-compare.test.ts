@@ -7,7 +7,6 @@ import {
   compareDelta,
   deserializeShareState,
   serializeShareState,
-  validateShareState,
   type ShareState,
   MAX_SHARE_URL_CHARS,
 } from "../shared/lib/share-state.ts";
@@ -85,59 +84,6 @@ describe("package 21 — share & compare", () => {
   });
 });
 
-describe("package 21 — share payload runtime validation", () => {
-  it("accepts a well-formed payload", () => {
-    expect(validateShareState(sample).ok).toBe(true);
-  });
-
-  it("rejects a negative volume value rather than passing it to a setter", () => {
-    const bad = validateShareState({
-      ...sample,
-      volume: { ...sample.volume, dataEstateGB: -999 },
-    });
-    expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(bad.error).toMatch(/dataEstateGB/);
-  });
-
-  it("rejects a non-numeric volume value", () => {
-    const bad = validateShareState({
-      ...sample,
-      volume: { accountCount: "10" },
-    });
-    expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(bad.error).toMatch(/accountCount/);
-  });
-
-  it("rejects a non-finite volume value", () => {
-    expect(
-      validateShareState({ ...sample, volume: { peakMBps: Number.NaN } }).ok,
-    ).toBe(false);
-  });
-
-  it("rejects a non-boolean capability flag", () => {
-    const bad = validateShareState({
-      ...sample,
-      capabilities: { auditLogs: "yes" },
-    });
-    expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(bad.error).toMatch(/auditLogs/);
-  });
-
-  it("rejects non-object and wrong-typed top-level fields", () => {
-    expect(validateShareState(null).ok).toBe(false);
-    expect(validateShareState("nope").ok).toBe(false);
-    expect(validateShareState({ ...sample, region: "" }).ok).toBe(false);
-    expect(validateShareState({ ...sample, provider: "oracle" }).ok).toBe(false);
-    expect(validateShareState({ ...sample, mode: "sideways" }).ok).toBe(false);
-  });
-
-  it("a malformed payload cannot survive a serialize round-trip either", () => {
-    // deserializeShareState delegates to the same validator, so a hand-edited
-    // ?s= carrying a negative estate is rejected at parse time, not later.
-    const encoded = serializeShareState({
-      ...sample,
-      volume: { ...sample.volume, dataEstateGB: -1 },
-    });
-    expect(deserializeShareState(encoded).ok).toBe(false);
-  });
-});
+// Share-payload validation is covered exhaustively in
+// share-state-validation.test.ts (allowlist semantics: bad fields are dropped
+// and named via rejectedFields, not treated as a whole-payload rejection).

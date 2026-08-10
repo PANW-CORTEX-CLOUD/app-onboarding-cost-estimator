@@ -434,6 +434,32 @@ components:
           description: Safe to present as a vendor-published price.
         sourceUrl:
           type: string
+    AppliedDefault:
+      type: object
+      additionalProperties: false
+      description: >-
+        A value the estimator substituted because the request supplied none.
+        Lets a reader tell their own numbers from the tool's guesses.
+      required: [field, label, value, kind, rationale]
+      properties:
+        field:
+          type: string
+          description: Request field the value stood in for.
+        label:
+          type: string
+        value:
+          oneOf:
+            - type: number
+            - type: string
+            - type: boolean
+        kind:
+          type: string
+          description: >-
+            convention = a billing definition identical for everyone;
+            assumption = a guess about this customer's estate that changes the quote.
+          enum: [convention, assumption]
+        rationale:
+          type: string
     ExcludedCapability:
       type: object
       additionalProperties: false
@@ -661,6 +687,11 @@ components:
           description: Capabilities dropped because the Terraform will not deploy them.
           items:
             $ref: "#/components/schemas/ExcludedCapability"
+        appliedDefaults:
+          type: array
+          description: Defaults the estimator substituted for absent inputs.
+          items:
+            $ref: "#/components/schemas/AppliedDefault"
         resolvedVolume:
           type: object
           additionalProperties: false

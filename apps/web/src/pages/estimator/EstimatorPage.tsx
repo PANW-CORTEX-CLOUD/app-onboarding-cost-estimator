@@ -341,6 +341,21 @@ export function EstimatorPage() {
     if (s.mode) setCompareMode(s.mode);
   }, []);
 
+  /**
+   * Dropped fields must be named: silently changing someone's numbers is
+   * worse than refusing them. Shared by both restore paths (share URL and
+   * the local last-shared-state backup) so neither can quietly skip it.
+   */
+  const restoredMessage = useCallback(
+    (source: string, rejectedFields?: string[]) => {
+      const dropped = rejectedFields ?? [];
+      return dropped.length
+        ? `${source} Ignored invalid ${dropped.join(", ")} — using defaults for ${dropped.length === 1 ? "it" : "those"}.`
+        : source;
+    },
+    [],
+  );
+
   // Package 21 — restore share URL on load (no server-side PII).
   useEffect(() => {
     const parsed = readShareFromSearch();
@@ -350,8 +365,10 @@ export function EstimatorPage() {
       return;
     }
     applyShareState(parsed.state);
-    setShareMsg("Restored inputs from share URL.");
-  }, [applyShareState]);
+    setShareMsg(
+      restoredMessage("Restored inputs from share URL.", parsed.rejectedFields),
+    );
+  }, [applyShareState, restoredMessage]);
 
   const focusAuditDriver = useCallback(() => {
     setJourneyModeAndUrl("cost");
@@ -409,7 +426,12 @@ export function EstimatorPage() {
       const parsed = validateShareState(saved);
       if (parsed.ok) {
         applyShareState(parsed.state);
-        setShareMsg("Restored your last shared inputs.");
+        setShareMsg(
+          restoredMessage(
+            "Restored your last shared inputs.",
+            parsed.rejectedFields,
+          ),
+        );
         setPresetNonce((n) => n + 1);
         return;
       }
@@ -436,7 +458,7 @@ export function EstimatorPage() {
     setVmCount(preset.volume.vmCount ?? 0);
     setAvgUsedDiskGB(preset.volume.avgUsedDiskGB ?? 0);
     setPresetNonce((n) => n + 1);
-  }, [applyShareState]);
+  }, [applyShareState, restoredMessage]);
 
   const currentShareState = useCallback((): ShareState => {
     return {
@@ -1906,6 +1928,7 @@ export function EstimatorPage() {
                     />
                     {estimate ? (
                       <ResultsAssumptionsSnapshot
+                        appliedDefaults={estimate?.appliedDefaults}
                         monthHours={monthHours}
                         assumedEventBytes={assumedEventBytes}
                         avgStoredGB={avgStoredGB}

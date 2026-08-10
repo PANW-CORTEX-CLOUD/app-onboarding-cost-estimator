@@ -165,3 +165,64 @@ describe("the guard reaches real estimates", () => {
     expect(res.lineItems.every((l) => l.capability !== "dspm")).toBe(true);
   });
 });
+
+describe("T-5.1.2 — estimates report what they guessed", () => {
+  it("an audit-only estimate reports the defaults it leaned on", async () => {
+    const res = await createEstimate({
+      provider: "azure",
+      region: "eastus",
+      capabilities: { auditLogs: true },
+      volume: {},
+      now: NOW,
+      ratesOptions: OFFLINE_RATES,
+    });
+    const fields = res.appliedDefaults.map((d) => d.field);
+    expect(fields).toContain("monthHours");
+    expect(fields).toContain("volume.accountCount");
+    for (const d of res.appliedDefaults) {
+      expect(d.rationale.length, d.field).toBeGreaterThan(20);
+      expect(["convention", "assumption"]).toContain(d.kind);
+    }
+  });
+
+  it("supplying a value removes it from the guess list", async () => {
+    const res = await createEstimate({
+      provider: "azure",
+      region: "eastus",
+      capabilities: { auditLogs: true },
+      volume: { accountCount: 250 },
+      monthHours: 744,
+      now: NOW,
+      ratesOptions: OFFLINE_RATES,
+    });
+    const fields = res.appliedDefaults.map((d) => d.field);
+    expect(fields).not.toContain("volume.accountCount");
+    expect(fields).not.toContain("monthHours");
+  });
+
+  it("EDGE: turning on DSPM adds its own guesses, and supplying them removes them", async () => {
+    const guessed = await createEstimate({
+      provider: "aws",
+      region: "us-east-1",
+      capabilities: { dspm: true },
+      volume: { dataEstateGB: 1024 },
+      now: NOW,
+      ratesOptions: OFFLINE_RATES,
+    });
+    expect(guessed.appliedDefaults.map((d) => d.field)).toContain(
+      "volume.avgObjectSizeMB",
+    );
+
+    const supplied = await createEstimate({
+      provider: "aws",
+      region: "us-east-1",
+      capabilities: { dspm: true },
+      volume: { dataEstateGB: 1024, avgObjectSizeMB: 16, pctScanned: 50 },
+      now: NOW,
+      ratesOptions: OFFLINE_RATES,
+    });
+    const fields = supplied.appliedDefaults.map((d) => d.field);
+    expect(fields).not.toContain("volume.avgObjectSizeMB");
+    expect(fields).not.toContain("volume.pctScanned");
+  });
+});
