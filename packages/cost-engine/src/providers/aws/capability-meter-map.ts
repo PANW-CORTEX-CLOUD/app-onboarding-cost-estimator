@@ -106,12 +106,13 @@ export const awsCapabilityMeterMap: readonly CapabilityMeterRow[] = [
   {
     capability: "registry",
     capabilityLabel: "Registry scan",
-    permissionSignal: "ECR pull for incremental image scan",
-    meterId: "ecr-data-transfer",
-    meterSku: "ECR data transfer (scan pull)",
+    permissionSignal: "Registry pull for incremental image scan",
+    meterId: "aws-egress-gb",
+    meterSku: "Data transfer out (cross-region scan pull)",
     unit: "GB",
     confidence: "Low",
-    sourceUrl: "https://aws.amazon.com/ecr/pricing/",
+    sourceUrl: "https://aws.amazon.com/ec2/pricing/on-demand/",
+    notes: "Registries publish no per-GB pull charge; the registry SKU and its storage are pre-existing customer cost, not caused by onboarding. Same-region scan pulls are $0; cross-region bills egress.",
   },
   {
     capability: "serverless",

@@ -131,6 +131,7 @@ describe("rate provenance reaches the estimate", () => {
   });
 
   it("a number the vendor does not publish cannot be a High-confidence line", () => {
+    // Retired rows keep their verdict so the finding stays on the record.
     const invented = verifyMeter("acr-pull-bandwidth", LEDGER, NOW);
     expect(invented.verdict).toBe("unsupported-meter");
     expect(confidenceForVerification("High", invented)).toBe("Low");
@@ -169,20 +170,63 @@ describe("rate provenance reaches the estimate", () => {
     expect(res.confidence).toBe("High");
   });
 
-  it("turning on a capability priced by an invented meter drops confidence", async () => {
+  it("turning on a capability priced by a non-vendor meter drops confidence", async () => {
+    // Azure and AWS are fully vendor-backed now, so the only capabilities that
+    // can still demonstrate this are the GCP ones whose meters remain
+    // unverifiable: ADS snapshots (no flat SKU exists) and the scanner VM.
     const res = await createEstimate({
-      provider: "azure",
-      region: "eastus",
-      capabilities: { auditLogs: true, registry: true },
-      volume: { accountCount: 10, imageCount: 50, avgImageGB: 0.5 },
+      provider: "gcp",
+      region: "us-central1",
+      capabilities: { auditLogs: true, adsCloud: true },
+      volume: { accountCount: 10, vmCount: 10, avgUsedDiskGB: 50 },
       now: NOW,
       ratesOptions: OFFLINE_RATES,
     });
-    const registry = res.lineItems.find((i) => i.capability === "registry");
-    expect(registry?.verification?.trusted).toBe(false);
-    expect(registry?.confidence).toBe("Low");
+    const ads = res.lineItems.find((i) => i.capability === "ads_cloud");
+    expect(ads?.verification?.trusted).toBe(false);
+    expect(ads?.confidence).toBe("Low");
     expect(res.confidence).toBe("Low");
-    expect(res.warnings.join(" ")).toMatch(/acr-pull-bandwidth/);
+    expect(res.warnings.join(" ")).toMatch(/pd-snapshot-storage/);
+  });
+
+  it("every Azure and AWS meter an estimate can bill is vendor-verified", async () => {
+    // A milestone worth locking in: after retiring the invented registry and
+    // scan meters, nothing on these two clouds prices from a number the vendor
+    // does not publish. If this fails, an unverified meter crept back in.
+    for (const [provider, region] of [
+      ["azure", "eastus"],
+      ["aws", "us-east-1"],
+    ] as const) {
+      const res = await createEstimate({
+        provider,
+        region,
+        capabilities: {
+          auditLogs: true,
+          adsCloud: true,
+          dspm: true,
+          registry: true,
+          serverless: true,
+          egress: true,
+        },
+        volume: {
+          accountCount: 10,
+          avgStoredGB: 100,
+          vmCount: 10,
+          avgUsedDiskGB: 50,
+          dataEstateGB: 1024,
+          imageCount: 20,
+          avgImageGB: 0.5,
+          packageCount: 30,
+          egressGB: 100,
+        },
+        now: NOW,
+        ratesOptions: OFFLINE_RATES,
+      });
+      const untrusted = res.lineItems
+        .filter((l) => !l.verification?.trusted)
+        .map((l) => l.meterId);
+      expect(untrusted, `${provider} has non-vendor meters`).toStrictEqual([]);
+    }
   });
 });
 

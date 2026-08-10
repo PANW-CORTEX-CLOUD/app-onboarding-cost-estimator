@@ -3,6 +3,8 @@
  * Provider-specific meter IDs and formulas must not appear here — only union provider tags.
  */
 
+import type { PriceTier } from "../graduated-pricing.ts";
+
 export type CloudProvider = "azure" | "aws" | "gcp";
 
 export type RatesSource = "live" | "cache" | "fallback";
@@ -42,8 +44,19 @@ export interface RateCard {
   provider: CloudProvider;
   region: string;
   currency: "USD";
-  /** meterId → unit price */
+  /**
+   * meterId → unit price.
+   *
+   * For a meter with a published price ladder this is the **first band's**
+   * rate, which is what "the rate" means for anything that is not modelling
+   * tiers. `unitTiers` carries the full ladder when one exists.
+   */
   unitPrices: Record<string, number>;
+  /**
+   * meterId → published price ladder, when the vendor graduates the price.
+   * Absent for flat-rate meters. See core/graduated-pricing.ts.
+   */
+  unitTiers?: Record<string, PriceTier[]>;
   capturedAt: string;
 }
 

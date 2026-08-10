@@ -3,6 +3,10 @@
  * Fail closed on non-USD; never invent $0 for missing meters.
  */
 import fs from "node:fs";
+import {
+  assertValidTiers,
+  type PriceTier,
+} from "../../core/graduated-pricing.ts";
 import type { CloudProvider, RateCard } from "../../core/models/estimate.types.ts";
 import {
   ageDaysFromCapturedAt,
@@ -13,10 +17,16 @@ import {
 export interface FallbackMeterRow {
   meterId: string;
   unit: string;
+  /** First band's rate when `tiers` is present; the flat rate otherwise. */
   unitPrice: number;
   currency: "USD";
   capturedAt: string;
   sourceUrl: string;
+  /**
+   * Published price ladder, when the vendor graduates this meter. Read from
+   * Azure `tierMinimumUnits` / AWS `beginRange`; see core/graduated-pricing.ts.
+   */
+  tiers?: PriceTier[];
 }
 
 export interface FallbackPricesDocument {
@@ -85,6 +95,26 @@ export function parseFallbackDocument(raw: unknown): FallbackPricesDocument {
     if (typeof m.sourceUrl !== "string" || !m.sourceUrl.startsWith("http")) {
       throw new Error(`fallback-prices: sourceUrl required for ${m.meterId}`);
     }
+    let tiers: PriceTier[] | undefined;
+    if (m.tiers !== undefined) {
+      if (!Array.isArray(m.tiers)) {
+        throw new Error(`fallback-prices: tiers must be an array for ${m.meterId}`);
+      }
+      tiers = m.tiers as PriceTier[];
+      // A malformed ladder must fail here rather than silently mis-price later.
+      assertValidTiers(tiers);
+      // `unitPrice` is what a caller that does not model tiers will charge, so
+      // it must be the first *paid* rate rather than a free opening band —
+      // otherwise flat consumers would price a metered service at $0. Free
+      // allowances are opt-in (see core/graduated-pricing.ts), and this keeps
+      // the non-tiered path on the conservative side of that choice.
+      const firstPaid = tiers.find((t) => t.unitPrice > 0) ?? tiers[0]!;
+      if (firstPaid.unitPrice !== m.unitPrice) {
+        throw new Error(
+          `fallback-prices: ${m.meterId} unitPrice ${m.unitPrice} must equal its first paid tier ${firstPaid.unitPrice}`,
+        );
+      }
+    }
     meters.push({
       meterId: m.meterId,
       unit: m.unit,
@@ -92,6 +122,7 @@ export function parseFallbackDocument(raw: unknown): FallbackPricesDocument {
       currency: "USD",
       capturedAt: m.capturedAt,
       sourceUrl: m.sourceUrl,
+      ...(tiers ? { tiers } : {}),
     });
   }
   return {
@@ -120,9 +151,11 @@ export function loadFallbackFile(filePath: string): FallbackPricesDocument {
  */
 export function fallbackToRateCard(doc: FallbackPricesDocument): RateCard {
   const unitPrices: Record<string, number> = {};
+  const unitTiers: Record<string, PriceTier[]> = {};
   let oldest = doc.meters[0]?.capturedAt ?? new Date(0).toISOString();
   for (const m of doc.meters) {
     unitPrices[m.meterId] = m.unitPrice;
+    if (m.tiers) unitTiers[m.meterId] = m.tiers;
     if (Date.parse(m.capturedAt) < Date.parse(oldest)) oldest = m.capturedAt;
   }
   return {
@@ -130,6 +163,7 @@ export function fallbackToRateCard(doc: FallbackPricesDocument): RateCard {
     region: doc.region,
     currency: "USD",
     unitPrices,
+    ...(Object.keys(unitTiers).length ? { unitTiers } : {}),
     capturedAt: oldest,
   };
 }

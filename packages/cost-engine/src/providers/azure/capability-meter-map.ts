@@ -120,13 +120,13 @@ export const azureCapabilityMeterMap: readonly CapabilityMeterRow[] = [
   {
     capability: "registry",
     capabilityLabel: "Registry scan",
-    permissionSignal: "ACR pull for incremental image scan",
-    meterId: "acr-pull-bandwidth",
-    meterSku: "Container Registry / bandwidth (scan pull)",
+    permissionSignal: "Registry pull for incremental image scan",
+    meterId: "azure-egress-gb",
+    meterSku: "Bandwidth data transfer out (cross-region scan pull)",
     unit: "GB",
     confidence: "Low",
-    sourceUrl: "https://azure.microsoft.com/en-us/pricing/details/container-registry/",
-    notes: "Do not bill existing registry storage — incremental scan pull only",
+    sourceUrl: "https://azure.microsoft.com/en-us/pricing/details/bandwidth/",
+    notes: "Registries publish no per-GB pull charge; the registry SKU and its storage are pre-existing customer cost, not caused by onboarding. Same-region scan pulls are $0; cross-region bills egress.",
   },
   {
     capability: "serverless",

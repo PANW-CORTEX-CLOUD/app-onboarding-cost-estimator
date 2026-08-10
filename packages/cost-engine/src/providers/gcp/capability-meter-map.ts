@@ -105,12 +105,13 @@ export const gcpCapabilityMeterMap: readonly CapabilityMeterRow[] = [
   {
     capability: "registry",
     capabilityLabel: "Registry scan",
-    permissionSignal: "Artifact Registry pull for incremental scan",
-    meterId: "artifact-registry-egress",
-    meterSku: "Artifact Registry network egress (scan pull)",
+    permissionSignal: "Registry pull for incremental image scan",
+    meterId: "gcp-egress-gb",
+    meterSku: "VPC network egress (cross-region scan pull)",
     unit: "GB",
     confidence: "Low",
-    sourceUrl: "https://cloud.google.com/artifact-registry/pricing",
+    sourceUrl: "https://cloud.google.com/vpc/network-pricing",
+    notes: "Registries publish no per-GB pull charge; the registry SKU and its storage are pre-existing customer cost, not caused by onboarding. Same-region scan pulls are $0; cross-region bills egress.",
   },
   {
     capability: "serverless",

@@ -44,6 +44,8 @@ import {
   gateCapabilitiesByTf,
   type TfMode,
 } from "./tf/tf-feature-manifest.ts";
+import { assertCapabilitiesAreSized } from "./capability-drivers.ts";
+import { CAPABILITY_FLAG_IDS } from "./tf/tf-feature-manifest.ts";
 import {
   confidenceForVerification,
   verificationWarnings,
@@ -177,6 +179,15 @@ export async function createEstimate(
     );
   }
 
+  // Fail closed before pricing: an enabled capability with no sizing at all
+  // cannot produce an honest number, and a $0 line would read as one.
+  assertCapabilitiesAreSized(
+    CAPABILITY_FLAG_IDS.filter((r) => caps[r.flag] === true).map(
+      (r) => r.id as Parameters<typeof assertCapabilitiesAreSized>[0][number],
+    ),
+    vol as Record<string, number | string | boolean | undefined>,
+  );
+
   const ratesResult = await getRates(provider, region, {
     now,
     ...(req.ratesOptions ?? {}),
@@ -253,11 +264,9 @@ export async function createEstimate(
     warnings.push(...storage.warnings);
   }
 
-  // TODO(REQ-6): `?? 0` below collapses "the user told us nothing" into "the
-  // answer is zero". The estimators warn on a zero, so the output is not
-  // silent, but by then the request layer has already destroyed the difference
-  // between absent and deliberately-zero. Carry `undefined` through and let
-  // each estimator decide whether to refuse or to price an explicit zero.
+  // `?? 0` below is safe now: assertCapabilitiesAreSized has already rejected
+  // the case where nothing was supplied, so reaching here means the caller
+  // either gave a number or deliberately chose zero.
   if (caps.adsCloud || caps.adsOutpost) {
     const ads = estimateAds(
       provider,

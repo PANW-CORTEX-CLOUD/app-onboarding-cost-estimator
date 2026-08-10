@@ -294,7 +294,7 @@ describe("package 01 — EDGE", () => {
         "vm-outpost-scanner",
         "blob-hot-lrs-read-10k",
         "blob-hot-lrs-list-10k",
-        "acr-pull-bandwidth",
+        "azure-egress-gb",
         "functions-scan-ops",
         "azure-egress-gb",
       ]

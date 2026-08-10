@@ -29,7 +29,7 @@ const azureRates: RateCard = {
   region: "eastus",
   currency: "USD",
   unitPrices: {
-    "acr-pull-bandwidth": 0.01,
+    "azure-egress-gb": 0.087,
     "functions-scan-ops": 0.2,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
@@ -40,7 +40,7 @@ const awsRates: RateCard = {
   region: "us-east-1",
   currency: "USD",
   unitPrices: {
-    "ecr-data-transfer": 0.09,
+    "aws-egress-gb": 0.09,
     "lambda-scan-ops": 0.2,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
@@ -51,7 +51,7 @@ const gcpRates: RateCard = {
   region: "us-central1",
   currency: "USD",
   unitPrices: {
-    "artifact-registry-egress": 0.12,
+    "gcp-egress-gb": 0.12,
     "cloud-run-scan-ops": 0.4,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
@@ -59,9 +59,10 @@ const gcpRates: RateCard = {
 
 describe("package 10 — REQ registry + serverless engines", () => {
   it("exposes ACR/ECR/AR and Functions/Lambda/Run meters", () => {
-    expect(AZURE_REGISTRY_METER).toBe("acr-pull-bandwidth");
-    expect(AWS_REGISTRY_METER).toBe("ecr-data-transfer");
-    expect(GCP_REGISTRY_METER).toBe("artifact-registry-egress");
+    // Registries publish no per-GB pull charge — scanning bills real egress.
+    expect(AZURE_REGISTRY_METER).toBe("azure-egress-gb");
+    expect(AWS_REGISTRY_METER).toBe("aws-egress-gb");
+    expect(GCP_REGISTRY_METER).toBe("gcp-egress-gb");
     expect(AZURE_SERVERLESS_METER).toBe("functions-scan-ops");
   });
 });

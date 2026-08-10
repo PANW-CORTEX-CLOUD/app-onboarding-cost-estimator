@@ -20,10 +20,21 @@ import type {
 } from "../registry-serverless/scan.types.ts";
 
 /**
- * ACR bandwidth (scan pull), $/GB. Same-region pulls modeled as $0 (Azure
- * recommends co-locating registry + compute); only `crossRegionPull` bills.
+ * Registry scanning is billed as network egress, not as a registry meter.
+ *
+ * Azure Container Registry publishes no per-GB pull charge: the bill is the
+ * registry SKU plus storage (both pre-existing customer infrastructure, not
+ * caused by onboarding Cortex) and standard network egress. Same-region
+ * pulls incur no egress.
+ *
+ * The estimator previously used an invented per-GB "pull bandwidth" meter
+ * that matched no vendor SKU (`acr-pull-bandwidth`). Pointing it at the real
+ * egress meter keeps the number defensible and keeps same-region scanning
+ * at $0, which is what actually happens.
+ *
+ * @see https://azure.microsoft.com/en-us/pricing/details/bandwidth/
  */
-export const AZURE_REGISTRY_METER = "acr-pull-bandwidth";
+export const AZURE_REGISTRY_METER = "azure-egress-gb";
 /**
  * Azure Functions incremental scan ops, $/million-executions. NOTE: the Functions
  * Consumption plan bills executions AND GB-seconds (execution time × memory) as
@@ -35,7 +46,7 @@ export const AZURE_SERVERLESS_METER = "functions-scan-ops";
 
 /**
  * @param inputs Registry scan toggle, image volume, and `crossRegionPull` flag.
- * @param rates Azure RateCard — must carry provider "azure" and `acr-pull-bandwidth`.
+ * @param rates Azure RateCard — must carry provider "azure" and `azure-egress-gb`.
  * @returns $0 line item for same-region pulls; `pullGB × rate` for cross-region.
  * @see https://azure.microsoft.com/en-us/pricing/details/container-registry/
  */

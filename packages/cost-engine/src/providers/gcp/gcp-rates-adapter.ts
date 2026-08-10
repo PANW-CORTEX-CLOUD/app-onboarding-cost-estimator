@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { RatesAdapter } from "../../core/ports/rates-adapter.interface.ts";
 import type { RateCard } from "../../core/models/estimate.types.ts";
 import { ageDaysFromCapturedAt } from "../../core/rates/age-days.ts";
+import { mergeLiveOverFallback } from "../rates/merge-live-rates.ts";
 import {
   fallbackResult,
   filterUsdUnitPrices,
@@ -117,13 +118,17 @@ export function createGcpRatesAdapter(
           warnings.push("gcp catalog produced no USD meters; using fallback");
           return fallbackResult(doc, warnings, now);
         }
-        const rates: RateCard = {
-          provider: "gcp",
-          region: doc.region,
-          currency: "USD",
-          unitPrices: parsed.unitPrices,
-          capturedAt: new Date().toISOString(),
-        };
+        // Layer live prices over the in-repo document rather than replacing it:
+        // a live query that covers only some meters must not leave the rest
+        // unpriced, and published tier ladders have to survive the merge.
+        const mergedRates = mergeLiveOverFallback(
+          "gcp",
+          doc,
+          parsed.unitPrices,
+          new Date().toISOString(),
+        );
+        warnings.push(...mergedRates.warnings);
+        const rates: RateCard = mergedRates.rates;
         return {
           rates,
           ratesSource: "live",

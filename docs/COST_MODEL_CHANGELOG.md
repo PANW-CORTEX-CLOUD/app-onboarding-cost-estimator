@@ -1,5 +1,49 @@
 # Cost model changelog
 
+## 2026-08-10d - graduated tiers, and a rate source that changed the answer
+
+Storage and egress are billed as ladders, not flat rates. Four meters now carry
+their published boundaries, read from Azure `tierMinimumUnits` and AWS
+`beginRange`. A 200,000 GB audit store drops from $4,160.00 to $4,036.20 per
+month; small estates are unchanged.
+
+Free allowances are opt-in via `applyFreeAllowances`, default off. Azure
+publishes its 100 GB egress allowance as a real $0 band, but it is granted per
+subscription and shared across every service in it, so assuming it is available
+to this workload would understate the bill.
+
+Fixed while validating the above: tiering applied from the in-repo rate file and
+vanished whenever a live or cached card was used, because each adapter rebuilt
+unitPrices by hand and dropped the ladders. AWS and GCP also replaced the
+document instead of layering over it, leaving uncovered meters unpriced. All
+three now share one merge that preserves ladders and warns when a live price
+diverges from the recorded one.
+
+No modelVersion bump: these correct a defect rather than re-rate the model.
+
+## 2026-08-10c - registry scanning bills real egress; sizing fails closed
+
+Research settled what a registry scan actually costs: Microsoft states there is
+no per-GB charge for pulling images, and the same holds for ECR and Artifact
+Registry. A registry's SKU and storage are infrastructure the customer already
+runs, so onboarding adds only network egress, and only across regions.
+
+`acr-pull-bandwidth`, `ecr-data-transfer` and `artifact-registry-egress` are
+retired; registry scanning bills the verified egress meters instead. Same-region
+scanning is $0. With this and the DSPM change, **Azure and AWS no longer price
+anything from a number the vendor does not publish**.
+
+Retired meters leave the rate files but keep their ledger rows behind a
+`retired` flag, so the finding stays on the record and the crawler keeps
+re-checking it — if a vendor ever introduces such a meter, we find out.
+
+An enabled capability with no sizing input at all is now refused rather than
+quoted at $0 (`providers/capability-drivers.ts`). An explicit zero is still
+priced, because that is a decision rather than a gap.
+
+No modelVersion bump: retiring an unbilled meter and refusing an unsizeable
+request change no correct total.
+
 ## 2026-08-10b - DSPM priced per operation, not per gigabyte
 
 DSPM multiplied an estate size in GB by a per-10,000-operations rate. Object

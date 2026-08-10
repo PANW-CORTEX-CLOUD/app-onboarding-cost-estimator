@@ -14,7 +14,18 @@ import type {
   ServerlessScanInputs,
 } from "../registry-serverless/scan.types.ts";
 
-export const GCP_REGISTRY_METER = "artifact-registry-egress";
+/**
+ * Registry scanning is billed as network egress, not as a registry meter.
+ *
+ * Artifact Registry egress bills at standard Compute Engine network rates; same-region egress is free.
+ *
+ * The estimator previously used an invented per-GB "pull bandwidth" meter that
+ * matches no vendor SKU. Pointing it at the real egress meter keeps the number
+ * defensible and keeps same-region scanning at $0, which is what actually happens.
+ *
+ * @see https://cloud.google.com/vpc/network-pricing
+ */
+export const GCP_REGISTRY_METER = "gcp-egress-gb";
 export const GCP_SERVERLESS_METER = "cloud-run-scan-ops";
 
 /**

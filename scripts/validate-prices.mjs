@@ -84,38 +84,43 @@ function readLedger() {
  * Ledger ↔ rate-file binding (runs in every mode)
  * ------------------------------------------------------------------ */
 
-function checkLedgerBinding(ledger) {
+/**
+ * Ledger ↔ rate-file binding.
+ *
+ * This used to be a second implementation of the rule that lives in the
+ * engine's `assertFallbackMatchesLedger`, and the two drifted the first time
+ * the rule changed: retiring a meter satisfied the engine and still failed
+ * here. Importing the engine's version keeps one definition of what "the
+ * ledger and the rate files agree" means.
+ *
+ * The import is dynamic because this script is plain .mjs and the engine is
+ * TypeScript — `node --experimental-strip-types` handles it, which is why the
+ * package.json entry point passes that flag.
+ *
+ * @returns {Promise<string[]>} one message per problem; empty when consistent
+ */
+async function checkLedgerBinding(ledger) {
+  const engineDir = path.join(ROOT, "packages/cost-engine/src/providers/rates");
+  const { assertFallbackMatchesLedger } = await import(
+    path.join(engineDir, "price-validation.ts")
+  );
+  const { loadFallbackFile } = await import(
+    path.join(engineDir, "fallback-schema.ts")
+  );
+
   const problems = [];
   for (const [provider, rel] of Object.entries(FALLBACK_PATHS)) {
-    const doc = JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8"));
-    const rows = ledger.meters.filter((m) => m.provider === provider);
-    const byId = new Map(rows.map((m) => [m.meterId, m]));
-    for (const meter of doc.meters) {
-      const row = byId.get(meter.meterId);
-      if (!row) {
-        problems.push(
-          `${provider}/${meter.meterId}: priced by the engine but absent from the ledger`,
-        );
-        continue;
-      }
-      if (row.claimedUnitPrice !== meter.unitPrice) {
-        problems.push(
-          `${provider}/${meter.meterId}: rate file ${meter.unitPrice} vs ledger ${row.claimedUnitPrice}`,
-        );
-      }
-      if (row.claimedUnit !== meter.unit) {
-        problems.push(
-          `${provider}/${meter.meterId}: rate file unit '${meter.unit}' vs ledger unit '${row.claimedUnit}'`,
-        );
-      }
-    }
-    const fileIds = new Set(doc.meters.map((m) => m.meterId));
-    for (const row of rows) {
-      if (!fileIds.has(row.meterId)) {
-        problems.push(
-          `${provider}/${row.meterId}: in the ledger but missing from fallback-prices.json`,
-        );
-      }
+    try {
+      assertFallbackMatchesLedger(loadFallbackFile(path.join(ROOT, rel)), ledger);
+    } catch (e) {
+      const message = String(e instanceof Error ? e.message : e);
+      // The engine's drift error is a header line followed by one line per
+      // problem. Anything else — a malformed rate file, an unreadable path —
+      // is a single line, and stripping a header that is not there swallowed
+      // it entirely. Only strip when the header is actually present.
+      const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
+      const isDriftReport = /^price-validations drift \(\d+\)/.test(lines[0] ?? "");
+      problems.push(...(isDriftReport ? lines.slice(1) : [`${provider}: ${message}`]));
     }
   }
   return problems;
@@ -443,9 +448,9 @@ function probeAws(row) {
  * Modes
  * ------------------------------------------------------------------ */
 
-function runCheck(ledger, now) {
+async function runCheck(ledger, now) {
   const failures = [];
-  const binding = checkLedgerBinding(ledger);
+  const binding = await checkLedgerBinding(ledger);
   failures.push(...binding);
 
   const blocked = [];
@@ -578,10 +583,10 @@ async function main() {
   const now = new Date();
   const ledger = readLedger();
   if (CHECK_ONLY) {
-    runCheck(ledger, now);
+    await runCheck(ledger, now);
     return;
   }
-  const binding = checkLedgerBinding(ledger);
+  const binding = await checkLedgerBinding(ledger);
   if (binding.length) {
     console.error("ledger ↔ rate-file drift must be fixed before crawling:");
     for (const b of binding) console.error(`  ${b}`);

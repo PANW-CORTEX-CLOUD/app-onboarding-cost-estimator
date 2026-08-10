@@ -23,14 +23,13 @@ pnpm tf:manifest             # re-derive what the Terraform deploys
 
 | | Count | Meaning |
 | --- | --- | --- |
-| **verified** | 26 | The vendor publishes this exact price for this exact unit. |
-| **proxy** | 2 | The number is officially correct but comes from a different service's price list than the meter claims. |
-| **unsupported-meter** | 4 | The vendor publishes no such meter. The number was invented by this repo. |
-| **unverified** | 1 | Cannot be checked as written. |
+| **verified** | 27 | The vendor publishes this exact price for this exact unit. |
+| **retired** | 6 | Billed by nothing. Kept as a record so the claim stays falsifiable and the crawler keeps re-checking it. |
+| **still billed but not vendor-backed** | 2 | Both GCP: `pd-snapshot-storage`, `gce-outpost-scanner`. |
 
-The 7 non-verified meters are forced to Low-confidence bands and each raises a
-named warning on any estimate that touches them. None of them can produce a
-High-confidence figure any more.
+Of the 34 ledger rows, 6 are retired and no longer priced at all. Of what
+remains billable, **Azure and AWS are fully vendor-verified**; the two GCP
+exceptions are forced to Low-confidence bands and each raises a named warning.
 
 ### Prices that were wrong and are now fixed
 
@@ -95,16 +94,22 @@ high because it charged per gigabyte for something billed per call.
 `avgObjectSizeMB` is a new input on the API and in the driver step, defaulting
 to 4 MB and always stated in the estimate notes.
 
-### P1 — Registry scan on Azure has no priceable model
+### ~~P1 — Registry scan has no priceable model~~ — fixed 2026-08-10
 
-`acr-pull-bandwidth` cannot be fixed by finding a better number, because the
-meter does not exist. Model what ACR actually charges instead:
+Not by finding a better number, but by establishing there is no charge to find.
+Microsoft states plainly that pulling images carries **no per-GB fee**: an ACR
+bill is the registry SKU plus storage plus standard network egress. The SKU and
+storage are infrastructure the customer already runs, so onboarding Cortex adds
+nothing there — only egress, and only when the scanner is out-of-region.
 
-- a Registry Unit per day for the SKU tier (Standard $0.6666/day), and
-- egress via `azure-egress-gb` **only** when `crossRegionPull` is true.
+`acr-pull-bandwidth`, `ecr-data-transfer` and `artifact-registry-egress` are
+retired. Registry scanning now bills `azure-egress-gb` / `aws-egress-gb` /
+`gcp-egress-gb`, all verified, and same-region scanning is $0 — which is what
+actually happens.
 
-The cross-region gate is already implemented and already yields $0 for
-same-region pulls, so the change is confined to the meter choice.
+**Azure and AWS now have no non-verified meters at all.** Every rate either
+cloud can bill has been read from the vendor's own price list. Only GCP retains
+two, both below.
 
 ### P2 — Name the GCP scanner machine type
 
@@ -122,17 +127,29 @@ Catalog API needs an API key and the pricing pages render client-side, so all
 the exact list and the last recorded quote. Wiring a Billing Catalog key into
 CI would close the last gap.
 
-### P4 — Volume tiers are not modelled
+### ~~P4 — Volume tiers are not modelled~~ — fixed 2026-08-10
 
-Several verified meters are the *first* tier of a graduated price:
-`blob-hot-lrs-capacity` (0.0208 up to 50 TB, then 0.019968 / 0.019136),
-`aws-egress-gb` (0.09 up to 10 TB, then 0.085 / 0.070 / 0.050),
-`s3-standard-storage` (0.023 for the first 50 TB), `gcp-egress-gb` (first
-tier). The ledger records the tiers it saw in `observed.tiersSeen`. Large
-estates are therefore over-estimated, which is the safe direction, but it
-should be modelled rather than left implicit. Free allowances (Azure's 100
-GB/month egress, Pub/Sub's first 10 GiB, Lambda's first 1M requests) are
-likewise not modelled.
+Four meters now carry their published ladders, with boundaries read from the
+vendors' machine-readable feeds rather than transcribed:
+
+| Meter | Boundaries (units) |
+| --- | --- |
+| `blob-hot-lrs-capacity` | 0 / 51,200 / 512,000 |
+| `s3-standard-storage` | 0 / 51,200 / 512,000 |
+| `azure-egress-gb` | 0 / 100 / 10,335 / 51,295 / 153,695 |
+| `aws-egress-gb` | 0 / 10,240 / 51,200 / 153,600 |
+
+A 200,000 GB audit store now costs $4,036.20/month instead of $4,160.00. Small
+estates are unchanged.
+
+`gcp-egress-gb` stays flat: Google publishes no keyless feed, so its boundaries
+cannot be verified, and guessing them would be exactly the invention this work
+exists to remove.
+
+**Free allowances are opt-in.** Azure publishes its 100 GB egress allowance as a
+$0 band, but the allowance is granted per subscription and shared across every
+service in it — so the default assumes it is already spent, and
+`applyFreeAllowances` opts in.
 
 ---
 

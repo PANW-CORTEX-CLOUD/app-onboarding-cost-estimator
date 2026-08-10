@@ -25,7 +25,21 @@
       "unitPrice": 0.0208,
       "currency": "USD",
       "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
+      "tiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.0208
+        },
+        {
+          "fromUnits": 51200,
+          "unitPrice": 0.019968
+        },
+        {
+          "fromUnits": 512000,
+          "unitPrice": 0.019136
+        }
+      ]
     },
     {
       "meterId": "managed-disk-snapshot",
@@ -42,22 +56,6 @@
       "currency": "USD",
       "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/"
-    },
-    {
-      "meterId": "blob-data-read-ops",
-      "unit": "10k-ops",
-      "unitPrice": 0.004,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
-    },
-    {
-      "meterId": "acr-pull-bandwidth",
-      "unit": "GB",
-      "unitPrice": 0.01,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/container-registry/"
     },
     {
       "meterId": "functions-scan-ops",
@@ -89,7 +87,29 @@
       "unitPrice": 0.087,
       "currency": "USD",
       "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/bandwidth/"
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/bandwidth/",
+      "tiers": [
+        {
+          "fromUnits": 0,
+          "unitPrice": 0.0
+        },
+        {
+          "fromUnits": 100,
+          "unitPrice": 0.087
+        },
+        {
+          "fromUnits": 10335,
+          "unitPrice": 0.083
+        },
+        {
+          "fromUnits": 51295,
+          "unitPrice": 0.07
+        },
+        {
+          "fromUnits": 153695,
+          "unitPrice": 0.05
+        }
+      ]
     },
     {
       "meterId": "blob-hot-lrs-list-10k",

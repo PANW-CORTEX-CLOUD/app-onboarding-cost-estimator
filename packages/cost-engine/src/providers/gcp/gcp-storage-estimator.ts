@@ -13,6 +13,10 @@ import {
   type AuditStorageInputs,
   type AuditStorageResult,
 } from "../storage/audit-storage.types.ts";
+import {
+  priceQuantity,
+  tieredPricingNote,
+} from "../rates/tiered-rate.ts";
 
 export const GCP_AUDIT_CAPACITY_METER = "gcs-standard-storage";
 /** Class A (writes) / Class B (reads) — per 10k ops. */
@@ -68,8 +72,13 @@ export function estimateGcpAuditStorage(
   assertAllowedRedundancy("gcp", GCP_ALLOWED_REDUNDANCY, inputs.redundancy);
 
   const capacityGb = resolveCapacityGb(true, inputs.avgGB, warnings);
-  const capacityRate = requireRate(rates.unitPrices, GCP_AUDIT_CAPACITY_METER);
-  const capacityCost = capacityGb * capacityRate;
+  // Capacity is graduated on the clouds that publish a ladder; priceQuantity
+  // charges each band at its own rate instead of the first band throughout.
+  const capacityPrice = priceQuantity(rates, GCP_AUDIT_CAPACITY_METER, capacityGb);
+  const capacityRate = capacityPrice.effectiveUnitPrice;
+  const capacityCost = capacityPrice.amount;
+  const capacityTierNote = tieredPricingNote(GCP_AUDIT_CAPACITY_METER, capacityPrice);
+  if (capacityTierNote) notes.push(capacityTierNote);
 
   const writeOps = inputs.writeOpsPerMonth ?? 0;
   const readOps = inputs.readOpsPerMonth ?? 0;
