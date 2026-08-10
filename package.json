@@ -19,7 +19,7 @@
     "test:estimate-cli": "node --test scripts/lib/estimate-check.test.mjs"
   },
   "devDependencies": {
-    "@stoplight/spectral-cli": "^6.16.2",
+    "@stoplight/spectral-cli": "^6.16.3",
     "openapi-typescript": "^7.13.0"
   },
   "engines": {
