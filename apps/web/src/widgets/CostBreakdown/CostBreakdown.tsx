@@ -48,7 +48,11 @@ export function CostBreakdown({
     );
   }
 
-  const rows =
+  // Explicit BreakdownRow[] annotation: without it, TS infers the fallback
+  // branch's object literal as its own narrower type (no placeholder/note
+  // keys at all, not even as absent-optional), and the union with
+  // BreakdownRow[] then rejects `li.placeholder`/`li.note` access below.
+  const rows: BreakdownRow[] =
     rowsProp ??
     (capabilities
       ? buildBreakdownRows(estimate, capabilities, warnings)
