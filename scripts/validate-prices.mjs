@@ -39,7 +39,14 @@ const FALLBACK_PATHS = {
 };
 
 const AZURE_RETAIL_URL = "https://prices.azure.com/api/retail/prices";
-const AWS_OFFER_BASE = "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws";
+/**
+ * Where AWS actually publishes prices. Imported from the engine rather than
+ * re-declared: this script and the AWS adapter were each carrying their own
+ * copy of the same URL.
+ */
+const { AWS_PRICE_LIST_OFFER_BASE: AWS_OFFER_BASE } = await import(
+  path.join(ROOT, "packages/cost-engine/src/providers/aws/aws-rates-adapter.ts")
+);
 /** Region-scoped offers are small; these global ones are fetched whole. */
 const AWS_GLOBAL_OFFERS = new Set(["AWSDataTransfer"]);
 /** Offers too large to hold in memory — streamed line by line instead. */
