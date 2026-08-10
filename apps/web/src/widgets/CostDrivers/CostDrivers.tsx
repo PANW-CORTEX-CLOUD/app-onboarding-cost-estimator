@@ -19,6 +19,7 @@ import {
   tfGroundingForCapability,
   tfGroundingLabel,
 } from "../../shared/model/tf-grounding.ts";
+import { formatUsd as usd } from "../../shared/lib/format-currency.ts";
 
 export type CostDriversProps = {
   estimate: EstimateResponse | null;
@@ -37,13 +38,6 @@ export type CostDriversProps = {
   /** True while a post-sensitivity re-estimate is in flight. */
   sensitivityUpdating?: boolean;
 };
-
-function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(n);
-}
 
 export function CostDrivers({
   estimate,

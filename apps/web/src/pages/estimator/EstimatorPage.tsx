@@ -45,6 +45,7 @@ import {
   clearEstimateCache,
 } from "../../shared/lib/estimate-cache.ts";
 import { CAPABILITY_DEBOUNCE_MS, debounce } from "../../shared/lib/debounce.ts";
+import { formatUsd } from "../../shared/lib/format-currency.ts";
 import {
   readProviderFromSearch,
   writeProviderToUrl,
@@ -1766,22 +1767,13 @@ export function EstimatorPage() {
                     {monthlyLow != null && monthlyHigh != null ? (
                       <p className="grounding-bands" data-testid="summary-bands">
                         Range (low → high):{" "}
-                        {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "USD",
-                        }).format(monthlyLow)}{" "}
+                        {formatUsd(monthlyLow)}{" "}
                         →{" "}
                         {monthlyExpected == null
                           ? "—"
-                          : new Intl.NumberFormat("en-US", {
-                              style: "currency",
-                              currency: "USD",
-                            }).format(monthlyExpected)}{" "}
+                          : formatUsd(monthlyExpected)}{" "}
                         →{" "}
-                        {new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: "USD",
-                        }).format(monthlyHigh)}
+                        {formatUsd(monthlyHigh)}
                       </p>
                     ) : null}
                     {estimate?.confidence || discoveryOnly ? (

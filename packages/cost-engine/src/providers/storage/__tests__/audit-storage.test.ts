@@ -188,4 +188,29 @@ describe("package 07 — EDGE", () => {
       ),
     ).toThrow(/missing unit price/);
   });
+
+  it("negative avgGB fails closed instead of silently applying the floor", () => {
+    // A negative avgGB is invalid input, not "unset" - it must not be
+    // treated the same as an omitted value (which legitimately floors to
+    // DEFAULT_AUDIT_STORAGE_FLOOR_GB). Matches the writeOps/readOps
+    // negative check a few lines below in each provider estimator.
+    expect(() =>
+      estimateAzureAuditStorage(
+        { enabled: true, region: "eastus", avgGB: -500 },
+        azureRates,
+      ),
+    ).toThrow(/avgGB must be non-negative/);
+    expect(() =>
+      estimateAwsAuditStorage(
+        { enabled: true, region: "us-east-1", avgGB: -1 },
+        awsRates,
+      ),
+    ).toThrow(/avgGB must be non-negative/);
+    expect(() =>
+      estimateGcpAuditStorage(
+        { enabled: true, region: "us-central1", avgGB: -1 },
+        gcpRates,
+      ),
+    ).toThrow(/avgGB must be non-negative/);
+  });
 });

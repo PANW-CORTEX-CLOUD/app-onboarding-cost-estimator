@@ -6,6 +6,7 @@ import { compareDelta } from "../../shared/lib/share-state.ts";
 import type { CloudProvider } from "../../entities/provider/model.ts";
 import { PROVIDER_LABELS } from "../../entities/provider/model.ts";
 import { modeledCapsList } from "../../shared/model/tf-grounding.ts";
+import { formatUsd as usd } from "../../shared/lib/format-currency.ts";
 
 export type CompareColumn = {
   id: string;
@@ -27,13 +28,6 @@ export type CompareScenariosProps = {
   onRunCompare: () => void;
   running?: boolean;
 };
-
-function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(n);
-}
 
 export function tierLiteracyNote(
   provider: CloudProvider,

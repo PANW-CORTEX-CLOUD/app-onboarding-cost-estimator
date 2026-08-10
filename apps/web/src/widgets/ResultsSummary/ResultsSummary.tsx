@@ -7,6 +7,7 @@ import {
   type CloudProvider,
 } from "../../entities/provider/model.ts";
 import type { FreshnessLevel } from "../../entities/rates/types.ts";
+import { formatUsd as usd } from "../../shared/lib/format-currency.ts";
 
 export type ResultsSummaryProps = {
   provider: CloudProvider;
@@ -29,13 +30,6 @@ export type ResultsSummaryProps = {
    */
   slim?: boolean;
 };
-
-function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(n);
-}
 
 export function ResultsSummary({
   provider,

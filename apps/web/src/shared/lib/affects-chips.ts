@@ -3,6 +3,7 @@
  * Never invent meters; only map fields to line items present on the estimate.
  */
 import type { CloudProvider } from "../model/cloud-provider.ts";
+import { formatUsd } from "./format-currency.ts";
 
 export type AffectsChip = {
   meterId: string;
@@ -63,13 +64,6 @@ const FIELD_METERS: Record<
   },
 };
 
-function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(n);
-}
-
 /**
  * Build chips for one field from estimate line items.
  * EDGE: omit meters not present; omit zero-amount lines; never invent $0 meters.
@@ -125,5 +119,5 @@ export function buildAffectsByField(
 }
 
 export function formatAffectsChip(chip: AffectsChip): string {
-  return `Affects: ${chip.friendlyName} · ${usd(chip.amount)}/mo`;
+  return `Affects: ${chip.friendlyName} · ${formatUsd(chip.amount)}/mo`;
 }

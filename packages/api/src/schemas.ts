@@ -2,6 +2,7 @@
  * Zod request schemas mirroring openapi/openapi.yaml (additionalProperties: false).
  */
 import { z } from "zod";
+import { PROJECTION_MAX_MONTHS } from "@cloud-connector/cost-engine";
 
 export const CloudProviderSchema = z.enum(["azure", "aws", "gcp"]);
 
@@ -59,7 +60,7 @@ export const CreateEstimateRequestSchema = z
 export const CreateProjectionRequestSchema = z
   .object({
     monthlyExpected: z.number().nonnegative(),
-    months: z.number().int().min(1).max(36),
+    months: z.number().int().min(1).max(PROJECTION_MAX_MONTHS),
     annualGrowthPercent: z.number().optional(),
     provider: CloudProviderSchema.optional(),
     monthlyLow: z.number().nonnegative().optional(),

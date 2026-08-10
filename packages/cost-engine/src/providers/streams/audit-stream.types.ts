@@ -4,8 +4,8 @@
  */
 import type { LineItem } from "../../core/models/estimate.types.ts";
 export { requireRate } from "../../core/rates/require-rate.ts";
-
-export type OrgPresetId = "small" | "medium" | "large";
+export type { OrgPresetId } from "../../core/volume-signals.ts";
+import type { OrgPresetId } from "../../core/volume-signals.ts";
 
 /** AC inputs for audit stream estimators. */
 export type AuditStreamInputs = {
@@ -55,15 +55,14 @@ export type AuditStreamResult = {
   confidence: "High";
 };
 
-/** Org presets → volume signals (AC). */
-export const ORG_STREAM_PRESETS: Record<
-  OrgPresetId,
-  Pick<AuditStreamInputs, "ingressGBPerDay" | "peakMBps" | "peakEventsPerSec">
-> = {
-  small: { ingressGBPerDay: 1, peakMBps: 0.25, peakEventsPerSec: 250 },
-  medium: { ingressGBPerDay: 10, peakMBps: 1, peakEventsPerSec: 1000 },
-  large: { ingressGBPerDay: 100, peakMBps: 10, peakEventsPerSec: 10_000 },
-};
+/**
+ * Org presets → volume signals (AC).
+ * Single source of truth: `core/volume-signals.ts` VOLUME_ORG_PRESETS (used
+ * by account-elasticity sizing). Was an independently hand-maintained
+ * duplicate here — same numbers, no test cross-checking they stayed equal.
+ */
+export { VOLUME_ORG_PRESETS as ORG_STREAM_PRESETS } from "../../core/volume-signals.ts";
+import { VOLUME_ORG_PRESETS as ORG_STREAM_PRESETS } from "../../core/volume-signals.ts";
 
 /**
  * Overlay `ORG_STREAM_PRESETS[inputs.orgPreset]` onto ingress/peak fields.

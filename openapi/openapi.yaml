@@ -491,6 +491,10 @@ components:
         months:
           type: integer
           minimum: 1
+          # Mirrors packages/cost-engine/src/core/project-costs.ts
+          # PROJECTION_MAX_MONTHS - the canonical value the API's zod schema
+          # (packages/api/src/schemas.ts) validates against. YAML can't import
+          # a TS constant, so this is a manually-kept-in-sync literal.
           maximum: 36
           description: Horizon 1–36 months (default 12 in UI)
         annualGrowthPercent:
