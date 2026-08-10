@@ -98,6 +98,7 @@ export default defineConfig({
             "src/__tests__/monorepo.test.ts",
             "src/__tests__/edge-plus-hardening.test.ts",
             "src/__tests__/edge-plus-meta.test.ts",
+            "src/__tests__/public-surface.test.ts",
           ],
         },
       },

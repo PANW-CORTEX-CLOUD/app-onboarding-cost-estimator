@@ -81,7 +81,7 @@ export interface PriceValidationLedger {
 }
 
 /** Verdicts whose number may be shown as an official vendor price. */
-export const TRUSTED_VERDICTS: readonly PriceValidationVerdict[] = ["verified"];
+const TRUSTED_VERDICTS: readonly PriceValidationVerdict[] = ["verified"];
 
 const VALID_VERDICTS = new Set<string>([
   "verified",

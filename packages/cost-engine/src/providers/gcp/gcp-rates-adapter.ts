@@ -22,7 +22,7 @@ export const GCP_FALLBACK_PRICES_PATH = path.join(
 );
 
 /** Public docs URL — live catalog typically needs API key (package 16 refresh). */
-export const GCP_BILLING_CATALOG_QUERY_URL =
+const GCP_BILLING_CATALOG_QUERY_URL =
   "https://cloudbilling.googleapis.com/v1/services";
 
 export type GcpCatalogSku = {
