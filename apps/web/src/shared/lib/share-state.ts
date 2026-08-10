@@ -46,9 +46,175 @@ export type ShareState = {
   mode?: "providers" | "tiers";
 };
 
-export type ShareParseOk = { ok: true; state: ShareState };
+export type ShareParseOk = {
+  ok: true;
+  state: ShareState;
+  /** Fields dropped because they were out of range or the wrong type. */
+  rejectedFields?: string[];
+};
 export type ShareParseErr = { ok: false; error: string };
 export type ShareParseResult = ShareParseOk | ShareParseErr;
+
+
+/**
+ * Numeric share fields, with the bounds each will accept.
+ *
+ * A share link is user-editable text: anyone can hand-craft `?s=` and hand it
+ * to a colleague. Until now `deserializeShareState` checked `v`, `provider` and
+ * `region` and cast the rest, so `volume.dataEstateGB = -999`, `NaN`, or a
+ * string went straight into a React state setter and sat in the form looking
+ * like a real number until the API rejected it at submit time.
+ *
+ * Note on prototype pollution: `JSON.parse` gives `__proto__` as an *own*
+ * property rather than mutating `Object.prototype`, and the page merges
+ * capabilities with object spread, which defines own properties instead of
+ * assigning — so it is not a pollution vector here. The allowlist below still
+ * drops such keys, because a key nobody declared has no business reaching the
+ * form either way.
+ *
+ * @see https://portswigger.net/web-security/prototype-pollution
+ */
+const SHARE_VOLUME_BOUNDS: Record<keyof ShareVolume, { max: number }> = {
+  // Generous ceilings: the intent is to reject nonsense, not to second-guess a
+  // legitimately enormous estate. The API schema enforces the real contract.
+  accountCount: { max: 1_000_000 },
+  monthlyActiveUsers: { max: 1_000_000_000 },
+  ingressGBPerDay: { max: 10_000_000 },
+  peakMBps: { max: 1_000_000 },
+  peakEventsPerSec: { max: 100_000_000 },
+  dataEstateGB: { max: 1_000_000_000 },
+  pctScanned: { max: 100 },
+  scansPerMonth: { max: 10_000 },
+  imageCount: { max: 10_000_000 },
+  avgImageGB: { max: 100_000 },
+  packageCount: { max: 10_000_000 },
+  egressGB: { max: 1_000_000_000 },
+};
+
+const SHARE_CAPABILITY_KEYS: readonly (keyof ShareCapabilities)[] = [
+  "discovery",
+  "auditLogs",
+  "adsCloud",
+  "adsOutpost",
+  "dspm",
+  "registry",
+  "serverless",
+  "egress",
+];
+
+/** Keys that must never be copied out of parsed JSON, whatever they contain. */
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Copy only declared capability flags, and only when they are real booleans.
+ * Unknown and forbidden keys are dropped rather than rejected, so an older or
+ * newer link still restores the parts this build understands.
+ */
+function sanitizeCapabilities(raw: unknown): ShareCapabilities {
+  const out: ShareCapabilities = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const obj = raw as Record<string, unknown>;
+  for (const key of SHARE_CAPABILITY_KEYS) {
+    if (FORBIDDEN_KEYS.has(key)) continue;
+    if (typeof obj[key] === "boolean") out[key] = obj[key] as boolean;
+  }
+  return out;
+}
+
+/**
+ * Copy only declared volume fields, and only when finite, non-negative and
+ * within bounds.
+ *
+ * @returns the sanitized volume plus a list of rejected fields, so the caller
+ *          can tell the user what was dropped instead of silently changing
+ *          their numbers
+ */
+function sanitizeVolume(raw: unknown): {
+  volume: ShareVolume;
+  rejected: string[];
+} {
+  const volume: ShareVolume = {};
+  const rejected: string[] = [];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { volume, rejected };
+  }
+  const obj = raw as Record<string, unknown>;
+  for (const key of Object.keys(SHARE_VOLUME_BOUNDS) as (keyof ShareVolume)[]) {
+    const value = obj[key];
+    if (value === undefined || value === null) continue;
+    if (
+      typeof value !== "number" ||
+      !Number.isFinite(value) ||
+      value < 0 ||
+      value > SHARE_VOLUME_BOUNDS[key].max
+    ) {
+      rejected.push(String(key));
+      continue;
+    }
+    volume[key] = value;
+  }
+  return { volume, rejected };
+}
+
+/**
+ * Validate an already-parsed share payload into a `ShareState` that is safe to
+ * feed to state setters.
+ *
+ * Exported so the validation can be tested directly, and reused if another
+ * surface ever restores shared state.
+ *
+ * @param parsed output of `JSON.parse` on a share payload
+ * @returns `{ ok: true, state, rejectedFields }`, or `{ ok: false, error }`
+ */
+export function validateShareState(parsed: unknown): ShareParseResult {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "Malformed share payload (not an object)" };
+  }
+  const obj = parsed as Record<string, unknown>;
+
+  if (obj.v !== 1) {
+    return { ok: false, error: "Malformed share payload (missing fields)" };
+  }
+  if (typeof obj.region !== "string" || !obj.region.trim()) {
+    return { ok: false, error: "Malformed share payload (missing fields)" };
+  }
+  if (
+    typeof obj.provider !== "string" ||
+    !["azure", "aws", "gcp"].includes(obj.provider)
+  ) {
+    return { ok: false, error: "Malformed share payload (provider)" };
+  }
+
+  const { volume, rejected } = sanitizeVolume(obj.volume);
+  const state: ShareState = {
+    v: 1,
+    provider: obj.provider as CloudProvider,
+    region: obj.region,
+    capabilities: sanitizeCapabilities(obj.capabilities),
+    volume,
+  };
+
+  // Totals are display-only, but a non-finite one would render as NaN.
+  const totals = obj.totals as Record<string, unknown> | undefined;
+  if (totals && typeof totals === "object" && !Array.isArray(totals)) {
+    const expected = totals.expected;
+    if (typeof expected === "number" && Number.isFinite(expected)) {
+      state.totals = { expected };
+      for (const k of ["low", "high"] as const) {
+        const v = totals[k];
+        if (typeof v === "number" && Number.isFinite(v)) state.totals[k] = v;
+      }
+    }
+  }
+
+  if (obj.mode === "providers" || obj.mode === "tiers") {
+    state.mode = obj.mode;
+  }
+
+  return rejected.length
+    ? { ok: true, state, rejectedFields: rejected }
+    : { ok: true, state };
+}
 
 const SECRET_KEYS = /password|secret|token|apikey|api_key|authorization|bearer|credential/i;
 
@@ -91,14 +257,9 @@ export function deserializeShareState(encoded: string): ShareParseResult {
         ? decodeURIComponent(escape(atob(padded + pad)))
         : Buffer.from(padded + pad, "base64").toString("utf8");
     assertNoSecretsInShare(json);
-    const parsed = JSON.parse(json) as ShareState;
-    if (parsed?.v !== 1 || !parsed.provider || !parsed.region) {
-      return { ok: false, error: "Malformed share payload (missing fields)" };
-    }
-    if (!["azure", "aws", "gcp"].includes(parsed.provider)) {
-      return { ok: false, error: "Malformed share payload (provider)" };
-    }
-    return { ok: true, state: parsed };
+    // Validate rather than cast: a share link is user-editable text, and every
+    // field below lands in a React state setter.
+    return validateShareState(JSON.parse(json));
   } catch (e) {
     return {
       ok: false,

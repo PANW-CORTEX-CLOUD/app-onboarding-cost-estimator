@@ -20,9 +20,39 @@ REQ-n            what must become true, in one sentence
 
 Status vocabulary: `todo`, `doing`, `done`, `blocked`, `needs-approval`.
 
+**Claiming an ID.** More than one session edits this file, and REQ-9 and REQ-10
+were each independently used for two different requirements before anyone
+noticed — which also produced two requirements sharing the title "One rule, one
+implementation". Before adding a requirement, take the next number **above the
+highest that appears anywhere in this file**, including sections you did not
+write, and grep the repo for `REQ-<n>` to be certain nothing already refers to
+it. Code markers are `TODO(REQ-n)`, so a reused number silently mislabels a
+piece of code.
+
 Markers left in code use `TODO(REQ-n):` so
 `grep -rn "TODO" --include="*.ts" --include="*.tsx" --include="*.mjs"` finds
 every open thread from the workspace root.
+
+## Index
+
+Sections are grouped by theme rather than by number, so this is the fastest way
+to find one.
+
+| ID | Requirement | Status |
+| --- | --- | --- |
+| [REQ-1](#req-1--no-estimate-may-multiply-a-quantity-by-a-price-in-a-different-unit) | No estimate may multiply a quantity by a price in a different unit | `done` |
+| [REQ-2](#req-2--every-priced-meter-must-exist-in-the-vendor-s-price-list) | Every priced meter must exist in the vendor's price list | `doing` |
+| [REQ-3](#req-3--volume-tiers-and-free-allowances-must-not-be-silently-ignored) | Volume tiers and free allowances must not be silently ignored | `done` |
+| [REQ-4](#req-4--rate-validation-must-cover-gcp-automatically) | Rate validation must cover GCP automatically | `todo` |
+| [REQ-5](#req-5--defaults-must-be-named-centralised-and-visible) | Defaults must be named, centralised and visible | `done` |
+| [REQ-6](#req-6--a-missing-input-must-not-silently-become-zero) | A missing input must not silently become zero | `done` |
+| [REQ-7](#req-7--the-engine-must-be-debuggable-without-a-debugger) | The engine must be debuggable without a debugger | `doing` |
+| [REQ-8](#req-8--public-surface-should-be-the-surface-we-mean) | Public surface should be the surface we mean | `needs-approval` |
+| [REQ-9](#req-9--one-rule-one-implementation) | One rule, one implementation | `doing` |
+| [REQ-10](#req-10--silent-fallbacks-must-not-defeat-fail-closed-guarantees) | Silent fallbacks must not defeat fail-closed guarantees | `doing` |
+| [REQ-11](#req-11--user-editable-state-must-be-validated-as-strictly-as-the-api-that-consumes-it) | User-editable state must be validated as strictly as the API that consumes it | `done` |
+| [REQ-12](#req-12--a-rate-s-source-must-not-change-the-answer) | A rate's source must not change the answer | `done` |
+| [REQ-13](#req-13--the-api-must-be-debuggable-without-adding-console-log) | The API must be debuggable without adding console.log | `doing` |
 
 ---
 
@@ -145,7 +175,7 @@ directions.
   **edge** opt-in still charges above the boundary; **edge** a ladder with no
   free band, and an entirely-free ladder, are both left alone.
 
-## REQ-10 — A rate's source must not change the answer  `done`
+## REQ-12 — A rate's source must not change the answer  `done`
 
 Found while validating REQ-3 end to end: tiering worked from the in-repo rate
 file and **vanished whenever a live or cached rate card was used**, because each
@@ -156,7 +186,7 @@ The AWS and GCP adapters were worse still: they replaced the document with the
 live response rather than layering over it, so any meter the live query missed
 simply had no price.
 
-- **T-10.1.1** `done` One `mergeLiveOverFallback` helper for all three adapters.
+- **T-13.1.1** `done` One `mergeLiveOverFallback` helper for all three adapters.
   A live price that confirms the recorded one keeps its ladder; a live price
   that differs drops to flat **and warns**, because fresh price plus stale
   boundaries would invent a ladder nobody published.
@@ -240,32 +270,20 @@ means adding `console.log` and removing it again.
 - **T-7.1.2** `todo` Instrument the estimate pipeline: resolved volume, per
   capability meter selection, rate source and verification verdict.
 
-## REQ-9 — One rule, one implementation  `done`
-
-`scripts/validate-prices.mjs` carried its own copy of the ledger↔rate-file
-binding rule that also lives in the engine's `assertFallbackMatchesLedger`. The
-two drifted the first time the rule changed: retiring a meter satisfied the
-engine and still failed the CI gate. The script now imports the engine's
-implementation (via `node --experimental-strip-types`), so the rule is defined
-once.
-
-*Learning worth keeping*: any invariant asserted in both a gate script and the
-engine is a drift waiting to happen. Prefer importing the engine.
-
 ## REQ-8 — Public surface should be the surface we mean  `needs-approval`
 
 53 symbols are `export`ed but used only inside their own file, and 5 are
 referenced nowhere at all. See the dead-code appendix.
 
-## REQ-9 — Silent fallbacks must not defeat fail-closed guarantees  `doing`
+## REQ-10 — Silent fallbacks must not defeat fail-closed guarantees  `doing`
 
 A read-only architecture sweep (silent fallbacks / persistence drift / loose
 validation / back-compat cruft) found this codebase unusually disciplined —
 most findings below are the exceptions, not a pattern.
 
-### UC-9.1 — A flaky network must not silently unblock a stale-rate export
+### UC-10.1 — A flaky network must not silently unblock a stale-rate export
 
-- **T-9.1.1** `done` `refreshRatesMeta`'s catch cleared `exportFreshness` to
+- **T-10.1.1** `done` `refreshRatesMeta`'s catch cleared `exportFreshness` to
   `null` on any `/rates` fetch failure; `buildEstimateExport`'s `needsAck`
   check treats `null` as "no gate needed," so a transient network error
   silently disabled the fail-closed critical-stale-rates export guarantee.
@@ -273,17 +291,17 @@ most findings below are the exceptions, not a pattern.
   cause (verification failure, not confirmed staleness).
   *Tests*: `ui-mvp.test.tsx` "a /rates network failure fails closed…".
 
-### UC-9.2 — A negative avgGB must not be treated as "unset"
+### UC-10.2 — A negative avgGB must not be treated as "unset"
 
-- **T-9.2.1** `done` `resolveCapacityGb` treated negative `avgGB` the same
+- **T-10.2.1** `done` `resolveCapacityGb` treated negative `avgGB` the same
   as omitted (applied the floor with a misleading warning) instead of
   throwing, inconsistent with the sibling `writeOps`/`readOps` negative
   checks a few lines below in the same estimators. Now throws.
   *Tests*: `audit-storage.test.ts` "negative avgGB fails closed…".
 
-### UC-9.3 — AWS/GCP "Refresh rates (live)" must either work or say so plainly  `todo`
+### UC-10.3 — AWS/GCP "Refresh rates (live)" must either work or say so plainly  `todo`
 
-- **T-9.3.1** `todo` AWS's live-rates path is structurally non-functional
+- **T-10.3.1** `todo` AWS's live-rates path is structurally non-functional
   (the real `index.json` is offers-shaped; the code expects
   products-shaped, so a real fetch always falls through to fallback) and
   GCP's Billing Catalog needs an API key that's never configured anywhere
@@ -294,11 +312,11 @@ most findings below are the exceptions, not a pattern.
   **real** `index.json` shape; **edge** GCP with `GCP_BILLING_API_KEY`
   unset states that plainly rather than degrading quietly.
 
-## REQ-10 — User-editable state must be validated as strictly as the API that consumes it  `doing`
+## REQ-11 — User-editable state must be validated as strictly as the API that consumes it  `done`
 
-### UC-10.1 — A hand-edited share link (`?s=`) must not reach state setters unchecked
+### UC-11.1 — A hand-edited share link (`?s=`) must not reach state setters unchecked
 
-- **T-10.1.1** `done` API boundary: `CreateEstimateRequestSchema`'s
+- **T-11.1.1** `done` API boundary: `CreateEstimateRequestSchema`'s
   `volume.*` numeric fields (`accountCount`, `dataEstateGB`, `vmCount`, …)
   used bare `z.number().optional()` with no `.nonnegative()`, unlike
   `assumedEventBytes`/`avgObjectSizeMB` which already had `.positive()`.
@@ -307,7 +325,7 @@ most findings below are the exceptions, not a pattern.
   boundary that actually receives it. Matching `minimum: 0` added to
   `openapi.yaml`'s `EstimateVolume` schema.
   *Tests*: `openapi-rest.test.ts` "negative volume fields fail closed…".
-- **T-10.1.2** `todo` `deserializeShareState` only validates
+- **T-11.1.2** `done` `deserializeShareState` only validated
   `v`/`provider`/`region`; `capabilities` and `volume` pass through via a
   bare `as ShareState` cast, and `EstimatorPage` then sets numeric state
   directly from those unvalidated fields with no runtime bounds check. The
@@ -318,7 +336,22 @@ most findings below are the exceptions, not a pattern.
   submit; **edge** a share link with an unexpected `volume` key shape must
   not crash the page.
 
-## REQ-11 — One rule, one implementation  `doing`
+## REQ-9 — One rule, one implementation  `doing`
+
+Two sessions found this independently, from opposite ends. Merged here so it
+reads as one requirement with several instances.
+
+### UC-9.0 — A CI gate must not re-implement an engine invariant
+
+- **T-9.0.1** `done` `scripts/validate-prices.mjs` carried its own copy of the
+  ledger↔rate-file binding rule that also lives in the engine's
+  `assertFallbackMatchesLedger`. The two drifted the first time the rule
+  changed: retiring a meter satisfied the engine and still failed the gate. The
+  script imports the engine's implementation now (via
+  `node --experimental-strip-types`).
+  *Learning*: any invariant asserted in both a gate script and the engine is a
+  drift waiting to happen. Import the engine.
+
 
 A hardcoded-config sweep found the cost-engine's own `core/`/provider
 constants already disciplined (named, documented, single-source); the real
@@ -382,11 +415,11 @@ re-declared elsewhere) and hand-mirrored copies within the same package.
   warning prefix to one side without the other must fail the test, not
   silently ship.
 
-## REQ-12 — The API must be debuggable without adding console.log  `doing`
+## REQ-13 — The API must be debuggable without adding console.log  `doing`
 
-### UC-12.1 — A request that fails inside a route handler must leave a trace
+### UC-13.1 — A request that fails inside a route handler must leave a trace
 
-- **T-12.1.1** `done` `packages/api` had zero per-request observability —
+- **T-13.1.1** `done` `packages/api` had zero per-request observability —
   only a one-time startup banner and a fatal-config `console.error` before
   `process.exit(1)`. Added `hono/logger` (already a transitive dependency
   of `hono` — no new package) for method/path/status/latency access

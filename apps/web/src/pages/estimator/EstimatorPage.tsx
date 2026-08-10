@@ -343,7 +343,14 @@ export function EstimatorPage() {
     if (s.volume.packageCount != null) setPackageCount(s.volume.packageCount);
     if (s.volume.egressGB != null) setEgressGB(s.volume.egressGB);
     if (s.mode) setCompareMode(s.mode);
-    setShareMsg("Restored inputs from share URL.");
+    // Dropped fields must be named: silently changing someone's numbers is
+    // worse than refusing them.
+    const dropped = parsed.rejectedFields ?? [];
+    setShareMsg(
+      dropped.length
+        ? `Restored inputs from share URL. Ignored invalid ${dropped.join(", ")} — using defaults for ${dropped.length === 1 ? "it" : "those"}.`
+        : "Restored inputs from share URL.",
+    );
   }, []);
 
   const focusAuditDriver = useCallback(() => {
