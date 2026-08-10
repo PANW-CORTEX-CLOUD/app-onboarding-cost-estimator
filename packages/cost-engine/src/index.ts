@@ -182,7 +182,6 @@ export {
   createAwsRatesAdapter,
   AWS_DEFAULT_REGION,
   AWS_FALLBACK_PRICES_PATH,
-  parseAwsPriceList,
 } from "./providers/aws/aws-rates-adapter.ts";
 
 export {

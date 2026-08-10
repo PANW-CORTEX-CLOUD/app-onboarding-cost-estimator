@@ -5,12 +5,14 @@
 import type { LineItem } from "../../core/models/estimate.types.ts";
 export { requireRate } from "../../core/rates/require-rate.ts";
 
-/** Supported redundancy — anything else fails closed unless explicitly allowlisted later. */
-export type StorageRedundancy =
-  | "LRS"
-  | "Standard"
-  | "S3_STANDARD"
-  | "GCS_STANDARD";
+/*
+ * There was a `StorageRedundancy` union here. It was referenced nowhere, and
+ * its members ("Standard") did not match what the providers actually enforce
+ * ("STANDARD", via each `*_ALLOWED_REDUNDANCY` array) — so a reader who trusted
+ * it would have been misled. `assertAllowedRedundancy` takes `readonly
+ * string[]` and normalises case, so the type added no safety either. Deleted
+ * rather than left as a decoration.
+ */
 
 export type AuditStorageInputs = {
   /** When false → $0 (TEST). */

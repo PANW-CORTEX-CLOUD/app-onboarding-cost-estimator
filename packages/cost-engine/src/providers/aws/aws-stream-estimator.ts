@@ -190,7 +190,9 @@ export function estimateAwsAuditStream(
 
   const ingressGb = monthlyIngressGb(resolved.ingressGBPerDay, monthHours);
   const putUnits = kinesisPutPayloadUnits(ingressGb);
-  const putMillions = putUnits / 1_000_000;
+  // Use the helper rather than repeating its body: the two had already drifted
+  // apart in the sense that only one of them was covered by a name.
+  const putMillions = kinesisPutPayloadMillions(ingressGb);
   // EDGE: never multiply raw unit count by the per-million list price (×1e6 bug).
   const putAmount = putMillions * putRate;
 

@@ -41,7 +41,28 @@ export type GcpCatalogResponse = {
   skus?: GcpCatalogSku[];
 };
 
+/**
+ * Read the Billing Catalog key from the environment, lazily and defensively.
+ * Absent in the browser, and a sandboxed frame can throw on property access,
+ * so a failure here means "no key" rather than breaking an estimate.
+ */
+function readGcpApiKeyFromEnv(): string | undefined {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+      .process;
+    const key = proc?.env?.GCP_BILLING_API_KEY;
+    return key && key.trim() ? key.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export type GcpRatesAdapterOptions = {
+  /**
+   * Cloud Billing Catalog API key. Falls back to `GCP_BILLING_API_KEY`.
+   * Without one the adapter serves the crawler-verified file and says so.
+   */
+  apiKey?: string;
   fetchImpl?: typeof fetch;
   fallbackPath?: string;
   forceFallback?: boolean;
@@ -101,8 +122,23 @@ export function createGcpRatesAdapter(
         return fallbackResult(doc, warnings, now);
       }
 
+      // The Cloud Billing Catalog API refuses unauthenticated callers
+      // ("Method doesn't allow unregistered callers"), so without a key the
+      // fetch below cannot succeed. Saying that plainly beats making a doomed
+      // request and reporting it as a transient failure — the capability is
+      // absent, not flaky.
+      const apiKey = opts.apiKey ?? readGcpApiKeyFromEnv();
+      if (!apiKey) {
+        warnings.push(
+          "gcp live rates need a Cloud Billing Catalog API key; set GCP_BILLING_API_KEY to enable them. Using the crawler-verified fallback file — refresh with `pnpm rates:validate --write`",
+        );
+        return fallbackResult(doc, warnings, now);
+      }
+
       try {
-        const res = await fetchImpl(GCP_BILLING_CATALOG_QUERY_URL);
+        const res = await fetchImpl(
+          `${GCP_BILLING_CATALOG_QUERY_URL}?key=${encodeURIComponent(apiKey)}`,
+        );
         if (!res.ok) {
           warnings.push(`gcp billing catalog HTTP ${res.status}; using fallback`);
           return fallbackResult(doc, warnings, now);

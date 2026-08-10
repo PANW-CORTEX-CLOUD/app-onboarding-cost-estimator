@@ -4,12 +4,8 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RatesAdapter } from "../../core/ports/rates-adapter.interface.ts";
-import type { RateCard } from "../../core/models/estimate.types.ts";
-import { ageDaysFromCapturedAt } from "../../core/rates/age-days.ts";
-import { mergeLiveOverFallback } from "../rates/merge-live-rates.ts";
 import {
   fallbackResult,
-  filterUsdUnitPrices,
   loadFallbackFile,
   type RatesResult,
 } from "../rates/fallback-schema.ts";
@@ -21,78 +17,32 @@ export const AWS_FALLBACK_PRICES_PATH = path.join(
   "fallback-prices.json",
 );
 
-export const AWS_PRICE_LIST_INDEX_URL =
-  "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json";
-
-/** Simplified Price List product attributes used in unit tests / smoke. */
-export type AwsPriceListProduct = {
-  sku?: string;
-  attributes?: { meterId?: string; location?: string };
-};
-export type AwsPriceListPrice = {
-  pricePerUnit?: Record<string, string>;
-};
-export type AwsPriceListResponse = {
-  products?: Record<string, AwsPriceListProduct>;
-  terms?: {
-    OnDemand?: Record<string, Record<string, { priceDimensions?: Record<string, AwsPriceListPrice> }>>;
-  };
-  currency?: string;
-};
+/**
+ * Per-service, per-region price documents — the only place AWS publishes rates.
+ * Used by scripts/validate-prices.mjs, which is where AWS refresh happens.
+ * The bare `index.json` at this path is an offer directory and has no prices.
+ */
+export const AWS_PRICE_LIST_OFFER_BASE =
+  "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws";
 
 export type AwsRatesAdapterOptions = {
-  fetchImpl?: typeof fetch;
   fallbackPath?: string;
+  /** Accepted for symmetry with the other adapters; AWS is always fallback. */
   forceFallback?: boolean;
   now?: Date;
 };
 
 /**
- * Parse a simplified AWS Price List document into unitPrices.
- * Expects products keyed with attributes.meterId and OnDemand USD pricePerUnit.USD.
- * Last dimension/term wins per SKU (no averaging across tiers); non-numeric or
- * non-USD prices are dropped by `filterUsdUnitPrices`, never coerced to 0.
- * @see https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.html
- */
-export function parseAwsPriceList(
-  body: AwsPriceListResponse,
-): { unitPrices: Record<string, number>; warnings: string[] } {
-  const raw: Record<string, { unitPrice: number; currency: string }> = {};
-  const currency = body.currency ?? "USD";
-  const products = body.products ?? {};
-  const onDemand = body.terms?.OnDemand ?? {};
-
-  for (const [sku, product] of Object.entries(products)) {
-    const meterId = product.attributes?.meterId;
-    if (!meterId) continue;
-    const skuTerms = onDemand[sku];
-    if (!skuTerms) continue;
-    for (const term of Object.values(skuTerms)) {
-      const dims = term.priceDimensions ?? {};
-      for (const dim of Object.values(dims)) {
-        const usd = dim.pricePerUnit?.USD ?? dim.pricePerUnit?.[currency];
-        if (usd === undefined) continue;
-        const n = Number(usd);
-        if (!Number.isFinite(n)) continue;
-        raw[meterId] = { unitPrice: n, currency };
-      }
-    }
-  }
-  return filterUsdUnitPrices(raw);
-}
-
-/**
- * RatesAdapter for AWS: tries the live Price List index (connectivity check only —
- * unit tests inject a full mock body; the real index.json is offers-shaped, not
- * products-shaped, so a real fetch currently always falls through to fallback),
- * then falls back to the bundled `fallback-prices.json` for `us-east-1`.
- * Never invents a $0 rate for a missing/unparseable meter (fail closed).
+ * RatesAdapter for AWS.
+ *
+ * Serves the crawler-verified `fallback-prices.json` for `us-east-1` and says
+ * plainly that there is no per-request live feed, rather than attempting a
+ * fetch that cannot succeed. Never invents a $0 rate for a missing meter.
  */
 export function createAwsRatesAdapter(
   opts: AwsRatesAdapterOptions = {},
 ): RatesAdapter {
   const fallbackPath = opts.fallbackPath ?? AWS_FALLBACK_PRICES_PATH;
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
   const now = opts.now ?? new Date();
 
   return {
@@ -111,51 +61,30 @@ export function createAwsRatesAdapter(
         return fallbackResult(doc, warnings, now);
       }
 
-      try {
-        // Live index fetch validates connectivity; full offer download is heavy —
-        // unit tests inject a complete mock body via fetchImpl.
-        const res = await fetchImpl(AWS_PRICE_LIST_INDEX_URL);
-        if (!res.ok) {
-          warnings.push(`aws price list HTTP ${res.status}; using fallback`);
-          return fallbackResult(doc, warnings, now);
-        }
-        const body = (await res.json()) as AwsPriceListResponse;
-        // Real index.json has offers, not products — treat missing products as empty → fallback
-        if (!body.products || Object.keys(body.products).length === 0) {
-          warnings.push(
-            "aws price list index has no parseable products; using fallback",
-          );
-          return fallbackResult(doc, warnings, now);
-        }
-        const parsed = parseAwsPriceList(body);
-        warnings.push(...parsed.warnings);
-        if (Object.keys(parsed.unitPrices).length === 0) {
-          warnings.push("aws price list produced no USD meters; using fallback");
-          return fallbackResult(doc, warnings, now);
-        }
-        // Layer live prices over the in-repo document rather than replacing it:
-        // a live query that covers only some meters must not leave the rest
-        // unpriced, and published tier ladders have to survive the merge.
-        const mergedRates = mergeLiveOverFallback(
-          "aws",
-          doc,
-          parsed.unitPrices,
-          new Date().toISOString(),
-        );
-        warnings.push(...mergedRates.warnings);
-        const rates: RateCard = mergedRates.rates;
-        return {
-          rates,
-          ratesSource: "live",
-          ageDays: ageDaysFromCapturedAt(rates.capturedAt, now),
-          warnings,
-        };
-      } catch (err) {
-        warnings.push(
-          `aws price list error: ${err instanceof Error ? err.message : String(err)}; using fallback`,
-        );
-        return fallbackResult(doc, warnings, now);
-      }
+      // No per-request live path for AWS, and saying so is the honest answer.
+      //
+      // Two independent reasons, both verified against the real service:
+      //   1. `offers/v1.0/aws/index.json` is an *offer index* — a directory of
+      //      services — and carries no prices at all.
+      //   2. Prices live in per-service, per-region documents, and none of
+      //      their products carry a `meterId` attribute; they are keyed by
+      //      `usagetype` plus a set of discriminating attributes. The parser
+      //      this adapter used to call expected `attributes.meterId`, which
+      //      AWS does not publish, so it could only ever succeed against a
+      //      hand-written mock.
+      //
+      // Even with a correct parser, a per-request fetch is not viable: the
+      // EC2 document alone is ~480 MB, and two of the meters here come from it.
+      //
+      // The refresh mechanism that does work is `pnpm rates:validate`, which
+      // reads those documents offline, compares each price against
+      // sources/price-validations.json and writes verified values into this
+      // file. That is strictly better than a live fetch, because a live price
+      // nobody checked is just a fresher unknown.
+      warnings.push(
+        "aws has no per-request live price feed (the Price List is per-service and up to ~480 MB); rates come from the crawler-verified fallback file — refresh with `pnpm rates:validate --write`",
+      );
+      return fallbackResult(doc, warnings, now);
     },
   };
 }

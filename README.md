@@ -70,3 +70,9 @@ What is verified, what is still a placeholder, and what to fix next:
 - [Cost model](./docs/CLOUD_COST_MODEL.md)
 - [UI Manual QA](./apps/web/MANUAL_QA.md)
 - [DoD](./docs/DEFINITION_OF_DONE.md)
+
+## Tooling (not part of the app)
+
+[`tools/claude-continuous-improvement`](./tools/claude-continuous-improvement/README.md) — a
+Claude Code skill + `Stop` hook that runs the implementation/improvement loop. It installs
+into `~/.claude` and is not wired into this project's build or tests.
