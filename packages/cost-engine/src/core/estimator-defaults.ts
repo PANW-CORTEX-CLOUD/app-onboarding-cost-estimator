@@ -20,8 +20,12 @@
 /** CONVENTION — the hour count cloud providers bill a "month" as (365×24/12). */
 export const DEFAULT_MONTH_HOURS_VALUE = 730;
 
-/** CONVENTION — reference estate the volume elasticities are calibrated against. */
-export const REFERENCE_ACCOUNT_COUNT_DEFAULT = 10;
+/*
+ * The reference estate the elasticities are calibrated against lives in
+ * core/volume-signals.ts as REFERENCE_ACCOUNT_COUNT. A second copy was declared
+ * here briefly; two copies of a calibration constant is precisely how they
+ * drift apart, so this defers to that one.
+ */
 
 /** ASSUMPTION — accounts in scope when the caller says nothing. */
 export const DEFAULT_ACCOUNT_COUNT = 10;
