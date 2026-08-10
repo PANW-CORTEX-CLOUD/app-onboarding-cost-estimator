@@ -101,17 +101,21 @@ export function isAzureAuditOnlyMeterAllowed(meterId: string): boolean {
  * MeterIds for capability `audit_logs` on the Azure research map.
  * Must equal the three TF-billable meters (map may add labels but not Capture).
  */
-export function azureAuditMapMeterIds(): string[] {
+export function azureAuditMapMeterIds(): AzureTfAuditBillableMeter[] {
   return azureCapabilityMeterMap
     .filter((r) => r.capability === "audit_logs")
-    .map((r) => r.meterId);
+    .map((r) => r.meterId) as AzureTfAuditBillableMeter[];
 }
 
 /**
  * Assert audit map meters match the reconciliation billable allowlist (order-insensitive).
  */
 export function assertAzureAuditMapMatchesReconciliation(): void {
-  const mapIds = new Set(azureAuditMapMeterIds());
+  // Both sides are compared as plain strings on purpose: the point of this
+  // assertion is to catch a map that has drifted *outside* the allowlist, and
+  // narrowing to the union first would make the compiler assume the very thing
+  // being checked.
+  const mapIds = new Set<string>(azureAuditMapMeterIds());
   const billable = new Set<string>(AZURE_TF_AUDIT_BILLABLE_METERS);
   if (mapIds.size !== billable.size) {
     throw new Error(

@@ -21,7 +21,6 @@ import {
 } from "../../azure/azure-rates-adapter.ts";
 import {
   createAwsRatesAdapter,
-  parseAwsPriceList,
   AWS_FALLBACK_PRICES_PATH,
 } from "../../aws/aws-rates-adapter.ts";
 import {
@@ -95,25 +94,21 @@ describe("package 04 — TEST parsers + offline + age", () => {
     expect(parsed.unitPrices["eh-standard-ingress-events"]).toBe(0.029);
   });
 
-  it("parses mock AWS Price List → unitPrices", () => {
-    const parsed = parseAwsPriceList({
-      currency: "USD",
-      products: {
-        sku1: { attributes: { meterId: "kinesis-shard-hour" } },
-      },
-      terms: {
-        OnDemand: {
-          sku1: {
-            term1: {
-              priceDimensions: {
-                d1: { pricePerUnit: { USD: "0.016" } },
-              },
-            },
-          },
-        },
-      },
-    });
-    expect(parsed.unitPrices["kinesis-shard-hour"]).toBe(0.016);
+  it("AWS says plainly that it has no per-request live feed", async () => {
+    // The old test proved a mock parser could parse a mock. It could not fail,
+    // because nothing real produced that shape: `offers/v1.0/aws/index.json` is
+    // an offer directory with no prices, and no AWS product carries a `meterId`
+    // attribute. A capability that only works against its own fixture is not a
+    // capability, so the adapter now states the limitation instead.
+    const adapter = createAwsRatesAdapter({ now: new Date("2026-08-10T00:00:00.000Z") });
+    const result = await adapter.getRates("us-east-1");
+
+    expect(result.ratesSource).toBe("fallback");
+    expect(result.warnings.join(" ")).toMatch(/no per-request live price feed/);
+    expect(result.warnings.join(" ")).toMatch(/rates:validate/);
+    // Fallback still has to be a complete, usable card.
+    expect(Object.keys(result.rates.unitPrices).length).toBeGreaterThan(0);
+    expect(result.rates.unitPrices["kinesis-shard-hour"]).toBe(0.015);
   });
 
   it("parses mock GCP Billing Catalog → unitPrices", () => {

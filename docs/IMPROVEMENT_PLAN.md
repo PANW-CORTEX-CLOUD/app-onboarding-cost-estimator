@@ -198,14 +198,16 @@ simply had no price.
 *Learning worth keeping*: a feature that reads from a fallback file must be
 tested through the live path too, or it only works offline.
 
-## REQ-4 — Rate validation must cover GCP automatically  `todo`
+## REQ-4 — Rate validation must cover GCP automatically  `doing`
 
 11 GCP meters fall back to a manual 90-day re-read because the Cloud Billing
 Catalog API needs a key.
 
-- **T-4.1.1** `todo` Support an optional `GCP_BILLING_API_KEY`; when present,
-  crawl the Catalog API like the other two clouds. Absent, keep today's manual
-  path — never silently pass.
+- **T-4.1.1** `done` (adapter) The GCP rates adapter accepts `apiKey` /
+  `GCP_BILLING_API_KEY`; without one it serves the crawler-verified file and
+  says why, instead of issuing a request the Catalog API refuses outright.
+  `todo` (crawler) `scripts/validate-prices.mjs` still treats GCP rows as
+  manual; wiring the same key there closes the last gap.
   *Tests*: with a stub catalog response the crawler verifies a GCP row;
   **edge** an invalid key reports failure and leaves `verifiedAt` untouched.
 
@@ -270,10 +272,12 @@ means adding `console.log` and removing it again.
 - **T-7.1.2** `todo` Instrument the estimate pipeline: resolved volume, per
   capability meter selection, rate source and verification verdict.
 
-## REQ-8 — Public surface should be the surface we mean  `needs-approval`
+## REQ-8 — Public surface should be the surface we mean  `todo`
 
-53 symbols are `export`ed but used only inside their own file, and 5 are
-referenced nowhere at all. See the dead-code appendix.
+53 symbols are `export`ed but used only inside their own file. The 5 that were
+referenced nowhere at all have been resolved — see the dead-code appendix. The
+remaining over-exports widen the package's surface and make refactoring harder,
+but nothing is wrong with them, so this stays low priority.
 
 ## REQ-10 — Silent fallbacks must not defeat fail-closed guarantees  `doing`
 
@@ -301,7 +305,7 @@ most findings below are the exceptions, not a pattern.
 
 ### UC-10.3 — AWS/GCP "Refresh rates (live)" must either work or say so plainly  `todo`
 
-- **T-10.3.1** `todo` AWS's live-rates path is structurally non-functional
+- **T-10.3.1** `done` AWS's live-rates path is structurally non-functional
   (the real `index.json` is offers-shaped; the code expects
   products-shaped, so a real fetch always falls through to fallback) and
   GCP's Billing Catalog needs an API key that's never configured anywhere
@@ -493,15 +497,14 @@ commitments. Each notes what would have to be true to make it worth doing.
 
 # Appendix — dead code
 
-`needs-approval`: three symbols predate this work and are referenced nowhere,
-including inside their own files. They look like unfinished or superseded
-features rather than mistakes, so they need a decision rather than a delete.
+All three have been resolved. Two were superseded abstractions that deserved a
+job rather than a delete; one was actively misleading and is gone.
 
-| Symbol | File | What it looks like |
+| Symbol | File | Decision |
 | --- | --- | --- |
-| `kinesisPutPayloadMillions` | `providers/aws/aws-stream-estimator.ts` | A helper converting PUT payload units to millions. The estimator does the same conversion inline. Either the helper was superseded, or the inline maths should call it. **Recommend: use it inline and keep one implementation.** |
-| `AzureTfAuditBillableMeter` | `providers/azure/tf-audit-reconciliation.ts` | A union type derived from the billable-meter array, never used in an annotation. Harmless, and useful if anything ever needs to type a meter id. **Recommend: keep, it costs nothing and documents intent.** |
-| `StorageRedundancy` | `providers/storage/audit-storage.types.ts` | A redundancy union (LRS/GRS/ZRS). Each provider instead keeps its own `*_ALLOWED_REDUNDANCY` array. Looks like an abandoned shared abstraction. **Recommend: either adopt it in all three providers or delete it — the current split is the worst of both.** |
+| `kinesisPutPayloadMillions` | `providers/aws/aws-stream-estimator.ts` | **Resolved — now used.** The estimator repeated its body inline (`putUnits / 1_000_000`). The helper is called instead, so there is one implementation with a name. |
+| `AzureTfAuditBillableMeter` | `providers/azure/tf-audit-reconciliation.ts` | **Resolved — now used** as the return type of `azureAuditMapMeterIds()`. Typing it immediately surfaced a looseness the build caught, which is the argument for using a type rather than parking it. |
+| `StorageRedundancy` | `providers/storage/audit-storage.types.ts` | **Resolved — deleted.** Referenced nowhere, and its members (`"Standard"`) disagreed with what the providers enforce (`"STANDARD"`), so a reader who trusted it would have been misled. `assertAllowedRedundancy` takes `readonly string[]` and normalises case, so it added no safety. A comment records why. |
 
 Two symbols added in the previous change were unused and have been removed
 rather than left for approval, since they were mine and never shipped:
