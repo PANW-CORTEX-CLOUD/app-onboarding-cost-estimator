@@ -22,6 +22,10 @@ import {
 import { runEstimate } from "../features/run-estimate/runEstimate.ts";
 import { ProviderSelector } from "../widgets/ProviderSelector/ProviderSelector.tsx";
 import { ESTIMATOR_BOOTSTRAP_SESSION_KEY } from "../shared/lib/estimator-bootstrap.ts";
+import {
+  SHARE_LAST_KEY,
+  saveLastShareState,
+} from "../shared/lib/safe-storage.ts";
 
 function mockEstimate(provider: "azure" | "aws" | "gcp") {
   return {
@@ -247,5 +251,52 @@ describe("package 17 — FSD UI", () => {
       expect.anything(),
     );
     expect(window.location.search).toContain("offlineEngine=1");
+  });
+});
+
+describe("last-shared-state restore on cold load", () => {
+  beforeEach(() => {
+    clearEstimateCache();
+    localStorage.removeItem(SHARE_LAST_KEY);
+    // Cold load: no bootstrap sentinel, so the restore/demo-preset branch runs.
+    sessionStorage.removeItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    cleanup();
+    localStorage.removeItem(SHARE_LAST_KEY);
+    sessionStorage.removeItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY);
+  });
+
+  it("restores the last shared inputs instead of the first-run demo preset", async () => {
+    saveLastShareState({
+      v: 1,
+      provider: "gcp",
+      region: "us-central1",
+      capabilities: { auditLogs: true },
+      volume: { accountCount: 42 },
+    });
+    render(<App client={createMockClient()} />);
+    await waitFor(() => {
+      expect(readProviderFromSearch(window.location.search)).toBe("gcp");
+    });
+  });
+
+  it("falls back to the demo preset when the saved blob is malformed", async () => {
+    // EDGE: written by an older build with a different shape, or hand-edited.
+    // It must not reach a state setter - the demo preset (azure) wins instead
+    // of the page restoring a negative estate size.
+    saveLastShareState({
+      v: 1,
+      provider: "gcp",
+      region: "us-central1",
+      capabilities: { auditLogs: true },
+      volume: { dataEstateGB: -999 },
+    });
+    render(<App client={createMockClient()} />);
+    await waitFor(() => {
+      expect(readProviderFromSearch(window.location.search)).toBe("azure");
+    });
   });
 });

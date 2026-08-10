@@ -58,6 +58,105 @@ export function assertNoSecretsInShare(raw: string): void {
   }
 }
 
+const SHARE_CAPABILITY_KEYS: ReadonlyArray<keyof ShareCapabilities> = [
+  "discovery",
+  "auditLogs",
+  "adsCloud",
+  "adsOutpost",
+  "dspm",
+  "registry",
+  "serverless",
+  "egress",
+];
+
+const SHARE_VOLUME_KEYS: ReadonlyArray<keyof ShareVolume> = [
+  "accountCount",
+  "monthlyActiveUsers",
+  "ingressGBPerDay",
+  "peakMBps",
+  "peakEventsPerSec",
+  "dataEstateGB",
+  "pctScanned",
+  "scansPerMonth",
+  "imageCount",
+  "avgImageGB",
+  "packageCount",
+  "egressGB",
+];
+
+/**
+ * Runtime-validate an untrusted share payload (a hand-editable `?s=` param or
+ * a localStorage blob written by an older build) before any of it reaches a
+ * state setter.
+ *
+ * Previously only `v`/`provider`/`region` were checked and the rest was cast
+ * through with `as ShareState`, so `volume.dataEstateGB = -999` or a
+ * string-where-a-number-belongs flowed straight into the estimator and was
+ * caught (if at all) only later by the API schema. Numeric fields must be
+ * finite and non-negative here for the same reason they are on the API's
+ * `CreateEstimateRequestSchema`.
+ *
+ * @param candidate Parsed-but-unverified JSON.
+ * @returns `{ ok: true, state }` only when every present field has the right
+ *   runtime type; otherwise a named reason.
+ */
+export function validateShareState(candidate: unknown): ShareParseResult {
+  if (typeof candidate !== "object" || candidate === null) {
+    return { ok: false, error: "Malformed share payload (not an object)" };
+  }
+  const c = candidate as Record<string, unknown>;
+  if (c.v !== 1 || !c.provider || !c.region) {
+    return { ok: false, error: "Malformed share payload (missing fields)" };
+  }
+  if (
+    typeof c.provider !== "string" ||
+    !["azure", "aws", "gcp"].includes(c.provider)
+  ) {
+    return { ok: false, error: "Malformed share payload (provider)" };
+  }
+  if (typeof c.region !== "string" || c.region.length === 0) {
+    return { ok: false, error: "Malformed share payload (region)" };
+  }
+
+  if (c.capabilities !== undefined) {
+    if (typeof c.capabilities !== "object" || c.capabilities === null) {
+      return { ok: false, error: "Malformed share payload (capabilities)" };
+    }
+    const caps = c.capabilities as Record<string, unknown>;
+    for (const key of SHARE_CAPABILITY_KEYS) {
+      if (caps[key] !== undefined && typeof caps[key] !== "boolean") {
+        return {
+          ok: false,
+          error: `Malformed share payload (capabilities.${key} must be boolean)`,
+        };
+      }
+    }
+  }
+
+  if (c.volume !== undefined) {
+    if (typeof c.volume !== "object" || c.volume === null) {
+      return { ok: false, error: "Malformed share payload (volume)" };
+    }
+    const vol = c.volume as Record<string, unknown>;
+    for (const key of SHARE_VOLUME_KEYS) {
+      const value = vol[key];
+      if (value === undefined) continue;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        return {
+          ok: false,
+          error: `Malformed share payload (volume.${key} must be a non-negative number)`,
+        };
+      }
+    }
+  }
+
+  if (c.mode !== undefined && c.mode !== "providers" && c.mode !== "tiers") {
+    return { ok: false, error: "Malformed share payload (mode)" };
+  }
+
+  return { ok: true, state: candidate as ShareState };
+}
+
 /**
  * JSON-encode then URL-safe base64 (`+`/`/` → `-`/`_`, no `=` padding) a share state.
  * @param state Share payload (no secrets — enforced by {@link assertNoSecretsInShare}).
@@ -91,14 +190,7 @@ export function deserializeShareState(encoded: string): ShareParseResult {
         ? decodeURIComponent(escape(atob(padded + pad)))
         : Buffer.from(padded + pad, "base64").toString("utf8");
     assertNoSecretsInShare(json);
-    const parsed = JSON.parse(json) as ShareState;
-    if (parsed?.v !== 1 || !parsed.provider || !parsed.region) {
-      return { ok: false, error: "Malformed share payload (missing fields)" };
-    }
-    if (!["azure", "aws", "gcp"].includes(parsed.provider)) {
-      return { ok: false, error: "Malformed share payload (provider)" };
-    }
-    return { ok: true, state: parsed };
+    return validateShareState(JSON.parse(json));
   } catch (e) {
     return {
       ok: false,

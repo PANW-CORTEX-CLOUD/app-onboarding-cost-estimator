@@ -108,9 +108,13 @@ import { jumpToInputTestId } from "../../shared/lib/cost-driver-explain.ts";
 import {
   buildShareUrl,
   readShareFromSearch,
+  validateShareState,
   type ShareState,
 } from "../../shared/lib/share-state.ts";
-import { saveLastShareState } from "../../shared/lib/safe-storage.ts";
+import {
+  loadLastShareState,
+  saveLastShareState,
+} from "../../shared/lib/safe-storage.ts";
 import { getDemoPreset } from "../../features/demo-presets/demoPresets.ts";
 import { CLOUD_PROVIDERS } from "../../shared/model/cloud-provider.ts";
 import { deriveVolumeFromAccounts } from "../../shared/lib/volume-elasticity.ts";
@@ -315,15 +319,8 @@ export function EstimatorPage() {
     ],
   );
 
-  // Package 21 — restore share URL on load (no server-side PII).
-  useEffect(() => {
-    const parsed = readShareFromSearch();
-    if (!parsed) return;
-    if (!parsed.ok) {
-      setToast(`Share link warning: ${parsed.error}`);
-      return;
-    }
-    const s = parsed.state;
+  /** Apply a validated share state to every input setter. */
+  const applyShareState = useCallback((s: ShareState) => {
     setProvider(s.provider);
     writeProviderToUrl(s.provider);
     setRegion(s.region);
@@ -343,8 +340,19 @@ export function EstimatorPage() {
     if (s.volume.packageCount != null) setPackageCount(s.volume.packageCount);
     if (s.volume.egressGB != null) setEgressGB(s.volume.egressGB);
     if (s.mode) setCompareMode(s.mode);
-    setShareMsg("Restored inputs from share URL.");
   }, []);
+
+  // Package 21 — restore share URL on load (no server-side PII).
+  useEffect(() => {
+    const parsed = readShareFromSearch();
+    if (!parsed) return;
+    if (!parsed.ok) {
+      setToast(`Share link warning: ${parsed.error}`);
+      return;
+    }
+    applyShareState(parsed.state);
+    setShareMsg("Restored inputs from share URL.");
+  }, [applyShareState]);
 
   const focusAuditDriver = useCallback(() => {
     setJourneyModeAndUrl("cost");
@@ -390,6 +398,24 @@ export function EstimatorPage() {
       typeof window !== "undefined" ? window.location.search : "";
     if (!shouldBootstrapAzureAudit(search)) return;
     markEstimatorBootstrapped();
+
+    // A share link is copied far more often than it is kept. saveLastShareState
+    // has always written a local backup on every copy; this is the read half,
+    // so losing the URL no longer means retyping the inputs. Validated rather
+    // than cast, because this blob may have been written by an older build
+    // with a different shape. Preferred over the demo preset: someone with a
+    // saved state is returning, not arriving.
+    const saved = loadLastShareState<unknown>();
+    if (saved) {
+      const parsed = validateShareState(saved);
+      if (parsed.ok) {
+        applyShareState(parsed.state);
+        setShareMsg("Restored your last shared inputs.");
+        setPresetNonce((n) => n + 1);
+        return;
+      }
+    }
+
     const preset = getDemoPreset("azure-audit");
     setProvider(preset.provider);
     writeProviderToUrl(preset.provider);
@@ -411,7 +437,7 @@ export function EstimatorPage() {
     setVmCount(preset.volume.vmCount ?? 0);
     setAvgUsedDiskGB(preset.volume.avgUsedDiskGB ?? 0);
     setPresetNonce((n) => n + 1);
-  }, []);
+  }, [applyShareState]);
 
   const currentShareState = useCallback((): ShareState => {
     return {
