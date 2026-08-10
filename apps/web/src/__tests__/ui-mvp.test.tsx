@@ -164,6 +164,7 @@ describe("package 19 — UI MVP acceptance", () => {
   it("switching provider updates region options", async () => {
     const client = createMockClient();
     render(<App client={client} />);
+    fireEvent.click(screen.getByTestId("journey-step-tab-start"));
     fireEvent.click(screen.getByRole("radio", { name: "AWS" }));
     await waitFor(() => {
       expect(screen.getByTestId("region-select")).toHaveValue("us-east-1");

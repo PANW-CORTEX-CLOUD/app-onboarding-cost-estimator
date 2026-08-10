@@ -8,7 +8,7 @@
       "unit": "shard-hour",
       "unitPrice": 0.015,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/kinesis/data-streams/pricing/"
     },
     {
@@ -16,7 +16,7 @@
       "unit": "million-payload-units",
       "unitPrice": 0.014,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/kinesis/data-streams/pricing/"
     },
     {
@@ -24,7 +24,7 @@
       "unit": "GB-month",
       "unitPrice": 0.023,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/s3/pricing/"
     },
     {
@@ -32,7 +32,7 @@
       "unit": "GB-month",
       "unitPrice": 0.05,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/ebs/pricing/"
     },
     {
@@ -40,7 +40,7 @@
       "unit": "hour",
       "unitPrice": 0.0416,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/"
     },
     {
@@ -48,7 +48,7 @@
       "unit": "GB",
       "unitPrice": 0.0004,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/s3/pricing/"
     },
     {
@@ -56,7 +56,7 @@
       "unit": "GB",
       "unitPrice": 0.09,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/ecr/pricing/"
     },
     {
@@ -64,23 +64,23 @@
       "unit": "million-request",
       "unitPrice": 0.2,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/lambda/pricing/"
     },
     {
-      "meterId": "s3-put-1k",
-      "unit": "1k-ops",
-      "unitPrice": 0.005,
+      "meterId": "s3-put-10k",
+      "unit": "10k-ops",
+      "unitPrice": 0.05,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/s3/pricing/"
     },
     {
-      "meterId": "s3-get-1k",
-      "unit": "1k-ops",
-      "unitPrice": 0.0004,
+      "meterId": "s3-get-10k",
+      "unit": "10k-ops",
+      "unitPrice": 0.004,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/s3/pricing/"
     },
     {
@@ -88,7 +88,7 @@
       "unit": "GB",
       "unitPrice": 0.09,
       "currency": "USD",
-      "capturedAt": "2026-08-10T20:16:44.930Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/"
     }
   ]

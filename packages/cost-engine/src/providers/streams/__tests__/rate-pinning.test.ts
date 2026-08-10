@@ -23,12 +23,10 @@ const baseRates: RateCard = {
 };
 
 /**
- * Fixed clock so this test doesn't rot: `freezeEstimate` fails closed once
- * `capturedAt` crosses STALE_DAYS_CRITICAL (core/rates/age-days.ts), which would
- * otherwise make this test fail ~30 days after the hardcoded date above,
- * independent of the stream-estimator logic actually under test.
+ * Pinned clock — the rate card below is captured on a fixed date, so leaving
+ * `now` to the wall clock makes this test expire 30 days after that date.
  */
-const FIXTURE_NOW = new Date("2026-07-01T12:00:00.000Z");
+const NOW = new Date("2026-07-05T00:00:00.000Z");
 
 const streamInputs = {
   enabled: true,
@@ -55,8 +53,8 @@ describe("package 13 — TEST golden stream freeze", () => {
         confidence: first.confidence,
       },
       rateCard: baseRates,
+      now: NOW,
       inputs: estimateInputs,
-      now: FIXTURE_NOW,
     });
 
     const mutated: RateCard = {

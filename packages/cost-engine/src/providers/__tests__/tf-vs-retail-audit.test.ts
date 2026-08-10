@@ -14,6 +14,23 @@ import {
 import { AZURE_TF_DEFAULTS } from "../azure/capability-meter-map.ts";
 import { modelVersion } from "../../model-version.ts";
 import { appendTfHonestyWarnings } from "../tf-honesty-warnings.ts";
+import { createAwsRatesAdapter } from "../aws/aws-rates-adapter.ts";
+import { createGcpRatesAdapter } from "../gcp/gcp-rates-adapter.ts";
+import { createRatesCache } from "../rates/rates-cache.ts";
+
+/**
+ * These assert on exact meters and amounts, so rates must come from the in-repo
+ * fallback rather than whatever the live price APIs answer today — otherwise
+ * the suite is a network test that fails on a slow link.
+ */
+const OFFLINE_RATES = {
+  adapters: {
+    azure: createAzureRatesAdapter({ forceFallback: true }),
+    aws: createAwsRatesAdapter({ forceFallback: true }),
+    gcp: createGcpRatesAdapter({ forceFallback: true }),
+  },
+  cache: createRatesCache(),
+};
 
 const TF_AUDIT_VOLUME = {
   accountCount: 10,
@@ -31,6 +48,7 @@ describe("package 31 — Azure audit TF defaults + three meters", () => {
       region: "eastus",
       capabilities: { auditLogs: true },
       volume: { ...TF_AUDIT_VOLUME },
+      ratesOptions: OFFLINE_RATES,
     });
     const ids = r.lineItems.map((l) => l.meterId).sort();
     expect(ids).toEqual([...AZURE_TF_AUDIT_BILLABLE_METERS].sort());
@@ -45,6 +63,7 @@ describe("package 31 — Azure audit TF defaults + three meters", () => {
       region: "eastus",
       capabilities: { auditLogs: true },
       volume: { ...TF_AUDIT_VOLUME },
+      ratesOptions: OFFLINE_RATES,
     });
     const tu = r.lineItems.find((l) => l.meterId === "eh-standard-tu");
     expect(tu).toBeDefined();
@@ -82,6 +101,7 @@ describe("package 32 — TF honesty warnings", () => {
       region: "eastus",
       capabilities: { auditLogs: true },
       volume: { ...TF_AUDIT_VOLUME },
+      ratesOptions: OFFLINE_RATES,
     });
     expect(
       r.warnings.some((w) => w.startsWith(AZURE_MODELED_NO_TF_WARNING_PREFIX)),
@@ -113,6 +133,7 @@ describe("package 32 — TF honesty warnings", () => {
         egressGB: 10,
         scansPerMonth: 1,
       },
+      ratesOptions: OFFLINE_RATES,
     });
     const honesty = r.warnings.filter((w) =>
       w.startsWith(AZURE_MODELED_NO_TF_WARNING_PREFIX),
@@ -150,6 +171,7 @@ describe("package 32 — TF honesty warnings", () => {
           avgImageGB: 1,
           scansPerMonth: 1,
         },
+        ratesOptions: OFFLINE_RATES,
       });
       const notes = r.warnings.filter((w) =>
         w.includes(NO_TF_INVENTORY_WARNING),
@@ -164,6 +186,7 @@ describe("package 32 — TF honesty warnings", () => {
       region: "eastus",
       capabilities: { discovery: true },
       volume: { accountCount: 5 },
+      ratesOptions: OFFLINE_RATES,
     });
     expect(r.totals.expected).toBe(0);
     expect(r.lineItems).toEqual([]);
@@ -189,6 +212,7 @@ describe("package 33 — audit-only meter allowlist", () => {
       region: "eastus",
       capabilities: { auditLogs: true },
       volume: { ...TF_AUDIT_VOLUME },
+      ratesOptions: OFFLINE_RATES,
     });
     for (const li of r.lineItems) {
       expect(isAzureAuditOnlyMeterAllowed(li.meterId)).toBe(true);

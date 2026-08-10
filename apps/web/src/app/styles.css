@@ -1271,3 +1271,81 @@ fieldset[data-testid="capability-toggles"] {
     animation: none;
   }
 }
+
+/* ---- Overview step: what to estimate, and can it be billed ---------- */
+.scope-overview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.scope-overview-item label,
+.scope-mode label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.scope-overview-item label[data-selected="true"],
+.scope-mode label[data-selected="true"] {
+  border-color: var(--accent, #0969da);
+  background: var(--accent-subtle, rgba(9, 105, 218, 0.06));
+}
+
+.scope-overview-text {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.scope-overview-title {
+  font-weight: 600;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.scope-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.scope-badge--deployed { color: #1a7f37; }
+.scope-badge--off { color: #9a6700; }
+.scope-badge--modeled { color: #57606a; }
+
+.scope-mode {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.5rem;
+  border: 0;
+  padding: 0;
+}
+
+.scope-mode legend {
+  font-weight: 600;
+  padding: 0 0 0.4rem;
+}
+
+.scope-summary {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 8px;
+  background: var(--surface-muted, rgba(0, 0, 0, 0.04));
+}
+
+.scope-summary p { margin: 0 0 0.35rem; }
+.scope-summary p:last-child { margin-bottom: 0; }
+.scope-summary-warn { color: #9a6700; font-weight: 600; }

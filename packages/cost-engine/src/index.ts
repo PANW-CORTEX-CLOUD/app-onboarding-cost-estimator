@@ -99,6 +99,32 @@ export type {
   FreezeLoadErr,
 } from "./core/index.ts";
 
+export {
+  createLogger,
+  captureLogs,
+  isEnabled as isDebugEnabled,
+  setDebugFilter,
+  setLogLevel,
+  setLogSink,
+  ENGINE_LOG_NAMESPACE,
+} from "./core/debug-log.ts";
+export type { Logger, LogLevel, LogRecord, LogSink } from "./core/debug-log.ts";
+
+export {
+  DEFAULT_ACCOUNT_COUNT,
+  DEFAULT_ADS_SCANS_PER_MONTH,
+  DEFAULT_AVG_OBJECT_SIZE_MB,
+  DEFAULT_AVG_PACKAGE_GB,
+  DEFAULT_DSPM_PCT_SCANNED,
+  DEFAULT_MONTH_HOURS_VALUE,
+  DEFAULT_SCANS_PER_MONTH,
+  DEFAULT_SNAPSHOT_LIFETIME_HOURS,
+  LIST_PAGE_SIZE_BY_PROVIDER,
+} from "./core/estimator-defaults.ts";
+
+export { scanOperationCounts, opsCost } from "./providers/dspm/scan-operations.ts";
+export type { ScanOperationCounts } from "./providers/dspm/scan-operations.ts";
+
 export { projectCosts } from "./core/index.ts";
 export type {
   ProjectCostsInput,
@@ -238,16 +264,19 @@ export { estimateDspm } from "./providers/dspm/estimate-dspm.ts";
 export {
   estimateAzureDspm,
   AZURE_DSPM_READ_METER,
+  AZURE_DSPM_LIST_METER,
   AZURE_DSPM_EPHEMERAL_METER,
 } from "./providers/azure/azure-dspm-estimator.ts";
 export {
   estimateAwsDspm,
   AWS_DSPM_READ_METER,
+  AWS_DSPM_LIST_METER,
   AWS_DSPM_EPHEMERAL_METER,
 } from "./providers/aws/aws-dspm-estimator.ts";
 export {
   estimateGcpDspm,
   GCP_DSPM_READ_METER,
+  GCP_DSPM_LIST_METER,
   GCP_DSPM_EPHEMERAL_METER,
 } from "./providers/gcp/gcp-dspm-estimator.ts";
 export {

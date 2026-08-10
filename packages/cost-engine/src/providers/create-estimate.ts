@@ -17,7 +17,7 @@ import {
   estimateExportFields,
 } from "../core/rate-pinning.ts";
 import { resolveVolumeSignals } from "../core/volume-signals.ts";
-import { getRates } from "./rates/get-rates.ts";
+import { getRates, type GetRatesOptions } from "./rates/get-rates.ts";
 import { estimateAuditStream } from "./streams/estimate-audit-stream.ts";
 import { estimateAuditStorage } from "./storage/estimate-audit-storage.ts";
 import { estimateAds } from "./ads/estimate-ads.ts";
@@ -29,6 +29,26 @@ import {
 import { estimateEgress } from "./egress/estimate-egress.ts";
 import { bandFromExpected } from "./dspm/dspm.types.ts";
 import { appendTfHonestyWarnings } from "./tf-honesty-warnings.ts";
+import {
+  DEFAULT_ACCOUNT_COUNT,
+  DEFAULT_ADS_SCANS_PER_MONTH,
+  DEFAULT_AVG_PACKAGE_GB,
+  DEFAULT_DSPM_PCT_SCANNED,
+  DEFAULT_MONTH_HOURS_VALUE,
+  DEFAULT_SCANS_PER_MONTH,
+  DEFAULT_SNAPSHOT_LIFETIME_HOURS,
+  HOURS_PER_DAY,
+} from "../core/estimator-defaults.ts";
+import {
+  DEFAULT_TF_MODE,
+  gateCapabilitiesByTf,
+  type TfMode,
+} from "./tf/tf-feature-manifest.ts";
+import {
+  confidenceForVerification,
+  verificationWarnings,
+  verifyMeter,
+} from "./rates/price-validation.ts";
 
 export type CreateEstimateRequest = {
   provider: CloudProvider;
@@ -68,8 +88,28 @@ export type CreateEstimateRequest = {
     egressGB?: number;
     /** Average event bytes for stream GB→events (Azure ingress). Must be > 0. */
     assumedEventBytes?: number;
+    /**
+     * Average size of a scanned object, in MB. Object stores bill scanning per
+     * API call, so this is what turns a DSPM estate size into billable
+     * operations. Defaults to DEFAULT_AVG_OBJECT_SIZE_MB.
+     */
+    avgObjectSizeMB?: number;
   };
   monthHours?: number;
+  /**
+   * `as-deployed` prices only what the connector Terraform will actually
+   * create, so the total is comparable to the customer's first invoice.
+   * `what-if` (default) also prices capabilities with no connector TF.
+   */
+  tfMode?: TfMode;
+  /** Injected clock for deterministic rate-provenance ages in tests. */
+  now?: Date;
+  /**
+   * Rate-resolution seam — inject adapters or a cache to estimate without
+   * touching the network (offline mode, reproducible exports, tests).
+   * Omitted, rates resolve live → 24h cache → in-repo fallback as before.
+   */
+  ratesOptions?: GetRatesOptions;
 };
 
 export type CreateEstimateResponse = EstimateResult & {
@@ -83,6 +123,10 @@ export type CreateEstimateResponse = EstimateResult & {
     peakEventsPerSec: number;
     overrideStreamMetrics: boolean;
   };
+  /** Which TF grounding rule produced this number. */
+  tfMode: TfMode;
+  /** Capabilities dropped because the Terraform will not deploy them. */
+  excludedCapabilities: Array<{ capability: string; reason: string }>;
 };
 
 /** Worst-case (most conservative) confidence across all line items: Low > Med > High. */
@@ -112,20 +156,31 @@ export async function createEstimate(
   req: CreateEstimateRequest,
 ): Promise<CreateEstimateResponse> {
   const { provider, region } = req;
-  const monthHours = req.monthHours ?? 730;
+  const monthHours = req.monthHours ?? DEFAULT_MONTH_HOURS_VALUE;
   if (monthHours <= 0) {
     throw new Error(`monthHours must be > 0, got ${monthHours}`);
   }
-  const caps = req.capabilities ?? {};
+  const requestedCaps = req.capabilities ?? {};
   const vol = req.volume ?? {};
   const warnings: string[] = [];
+  const now = req.now ?? new Date();
+  const tfMode = req.tfMode ?? DEFAULT_TF_MODE;
+
+  // Gate before any pricing happens: in as-deployed mode a capability the
+  // Terraform will not create must never reach an estimator.
+  const gate = gateCapabilitiesByTf(provider, requestedCaps, tfMode);
+  const caps = gate.effective;
+  warnings.push(...gate.warnings);
   if (vol.assumedEventBytes !== undefined && vol.assumedEventBytes <= 0) {
     throw new Error(
       `assumedEventBytes must be > 0, got ${vol.assumedEventBytes}`,
     );
   }
 
-  const ratesResult = await getRates(provider, region);
+  const ratesResult = await getRates(provider, region, {
+    now,
+    ...(req.ratesOptions ?? {}),
+  });
   warnings.push(...ratesResult.warnings);
   const rates: RateCard = ratesResult.rates;
   if (rates.provider !== provider) {
@@ -134,7 +189,7 @@ export async function createEstimate(
     );
   }
 
-  const accountCount = vol.accountCount ?? 10;
+  const accountCount = vol.accountCount ?? DEFAULT_ACCOUNT_COUNT;
   const overrideStreamMetrics = vol.overrideStreamMetrics === true;
   const resolvedVol = resolveVolumeSignals({
     provider,
@@ -198,6 +253,11 @@ export async function createEstimate(
     warnings.push(...storage.warnings);
   }
 
+  // TODO(REQ-6): `?? 0` below collapses "the user told us nothing" into "the
+  // answer is zero". The estimators warn on a zero, so the output is not
+  // silent, but by then the request layer has already destroyed the difference
+  // between absent and deliberately-zero. Carry `undefined` through and let
+  // each estimator decide whether to refuse or to price an explicit zero.
   if (caps.adsCloud || caps.adsOutpost) {
     const ads = estimateAds(
       provider,
@@ -207,8 +267,8 @@ export async function createEstimate(
         region,
         vmCount: vol.vmCount ?? 0,
         avgUsedDiskGB: vol.avgUsedDiskGB ?? 0,
-        scansPerMonth: vol.scansPerMonth ?? 4,
-        snapshotLifetimeHours: 24,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_ADS_SCANS_PER_MONTH,
+        snapshotLifetimeHours: DEFAULT_SNAPSHOT_LIFETIME_HOURS,
         monthHours,
       },
       rates,
@@ -224,8 +284,9 @@ export async function createEstimate(
         enabled: true,
         region,
         dataEstateGB: vol.dataEstateGB ?? 0,
-        pctScanned: vol.pctScanned ?? 10,
-        scansPerMonth: vol.scansPerMonth ?? 1,
+        pctScanned: vol.pctScanned ?? DEFAULT_DSPM_PCT_SCANNED,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
+        avgObjectSizeMB: vol.avgObjectSizeMB,
       },
       rates,
     );
@@ -241,7 +302,7 @@ export async function createEstimate(
         region,
         imageCount: vol.imageCount ?? 0,
         avgImageGB: vol.avgImageGB ?? 0,
-        scansPerMonth: vol.scansPerMonth ?? 1,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
         crossRegionPull: false,
       },
       rates,
@@ -257,8 +318,8 @@ export async function createEstimate(
         enabled: true,
         region,
         packageCount: vol.packageCount ?? 0,
-        avgPackageGB: 0.01,
-        scansPerMonth: vol.scansPerMonth ?? 1,
+        avgPackageGB: DEFAULT_AVG_PACKAGE_GB,
+        scansPerMonth: vol.scansPerMonth ?? DEFAULT_SCANS_PER_MONTH,
       },
       rates,
     );
@@ -277,7 +338,7 @@ export async function createEstimate(
     // for genuinely redundant meters (e.g. registry pull bandwidth already
     // covered by a stream meter), not this case.
     const monthlyIngress =
-      streamIngressGbPerDay * (monthHours / 24);
+      streamIngressGbPerDay * (monthHours / HOURS_PER_DAY);
     const eg = estimateEgress(
       provider,
       {
@@ -302,6 +363,25 @@ export async function createEstimate(
   // Honesty: Azure TF bills audit only; AWS/GCP have no connector TF inventory.
   appendTfHonestyWarnings(provider, caps, warnings);
 
+  // Rate provenance: stamp every line with when its price was last seen in the
+  // vendor's own price list, and refuse to call a line High confidence when the
+  // number behind it is not vendor-backed.
+  const verifiedLineItems: LineItem[] = lineItems.map((item) => {
+    const verification = verifyMeter(item.meterId, undefined, now);
+    return {
+      ...item,
+      confidence: confidenceForVerification(item.confidence, verification),
+      verification,
+    };
+  });
+  warnings.push(
+    ...verificationWarnings(
+      verifiedLineItems.map((i) => i.meterId),
+      undefined,
+      now,
+    ),
+  );
+
   const estimateInputs: EstimateInputs = {
     provider,
     region,
@@ -319,16 +399,16 @@ export async function createEstimate(
   };
 
   const meta = estimateExportFields(provider, rates, estimateInputs);
-  const expected = lineItems.reduce((s, i) => s + i.amount, 0);
+  const expected = verifiedLineItems.reduce((s, i) => s + i.amount, 0);
   const confidence =
-    lineItems.length === 0 ? "High" : worstConfidence(lineItems);
+    verifiedLineItems.length === 0 ? "High" : worstConfidence(verifiedLineItems);
   // AC (pkg 19): Low-confidence capabilities expose low/expected/high bands.
   const totals =
     confidence === "Low" ? bandFromExpected(expected) : { expected };
 
   return {
     provider,
-    lineItems,
+    lineItems: verifiedLineItems,
     totals,
     confidence,
     modelVersion: meta.modelVersion ?? modelVersion,
@@ -342,5 +422,7 @@ export async function createEstimate(
       peakEventsPerSec: resolvedVol.peakEventsPerSec,
       overrideStreamMetrics,
     },
+    tfMode,
+    excludedCapabilities: gate.excluded,
   };
 }

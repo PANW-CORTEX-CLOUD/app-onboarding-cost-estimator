@@ -7,6 +7,9 @@ import type {
   RateCard,
 } from "../../core/models/estimate.types.ts";
 import { isGovCloudRegion } from "../ads/ads.types.ts";
+import { DEFAULT_AVG_OBJECT_SIZE_MB } from "../../core/estimator-defaults.ts";
+import { createLogger } from "../../core/debug-log.ts";
+import { opsCost, scanOperationCounts } from "./scan-operations.ts";
 import {
   bandFromExpected,
   DEFAULT_EPHEMERAL_HOURS_PER_SCAN,
@@ -16,8 +19,13 @@ import {
   type DspmResult,
 } from "./dspm.types.ts";
 
+const log = createLogger("cost:dspm");
+
 export type DspmMeterIds = {
+  /** Per-object read operation meter (Get Blob / GetObject / Class B). */
   dataReadMeterId: string;
+  /** Estate enumeration meter (List Blobs / LIST / Class A). */
+  listMeterId: string;
   ephemeralMeterId: string;
   providerLabel: string;
   /**
@@ -100,16 +108,43 @@ export function estimateDspmForProvider(
   }
 
   const scannedGB = scannedGbFromInputs(inputs);
+  const avgObjectSizeMB = inputs.avgObjectSizeMB ?? DEFAULT_AVG_OBJECT_SIZE_MB;
+
+  // Object stores bill scanning per API call, not per gigabyte: hot/standard
+  // tiers have no retrieval fee at all. Bytes therefore have to become an
+  // object count before they can become dollars, and the assumption that does
+  // it is stated in the notes rather than hidden.
+  const ops = scanOperationCounts(provider, scannedGB, avgObjectSizeMB);
   const readRate = requireRate(rates.unitPrices, meters.dataReadMeterId);
-  // Expected: scanned GB × data-read band unit price ($/GB)
-  let expected = scannedGB * readRate;
+  const listRate = requireRate(rates.unitPrices, meters.listMeterId);
+
+  const readCost = opsCost(ops.readOps, readRate);
+  const listCost = opsCost(ops.listOps, listRate);
+  let expected = readCost + listCost;
+
+  log.debug(
+    () =>
+      `${provider} scannedGB=${scannedGB} avgObjectSizeMB=${avgObjectSizeMB} objects=${ops.objects} readOps=${ops.readOps}@${readRate}/10k listOps=${ops.listOps}@${listRate}/10k read=$${readCost} list=$${listCost}`,
+  );
+
+  notes.push(
+    `${ops.objects.toLocaleString("en-US", { maximumFractionDigits: 0 })} objects derived from ${scannedGB} GB at ${avgObjectSizeMB} MB average object size (object stores bill per operation, not per GB).`,
+    `${ops.readOps.toLocaleString("en-US", { maximumFractionDigits: 0 })} read operations (${meters.dataReadMeterId}) + ${ops.listOps.toLocaleString("en-US")} list operations (${meters.listMeterId}, ${ops.listPageSize} objects per page).`,
+  );
 
   const lineItems: LineItem[] = [
     {
       provider,
       capability: "dspm",
       meterId: meters.dataReadMeterId,
-      amount: expected,
+      amount: readCost,
+      confidence: "Low",
+    },
+    {
+      provider,
+      capability: "dspm",
+      meterId: meters.listMeterId,
+      amount: listCost,
       confidence: "Low",
     },
   ];

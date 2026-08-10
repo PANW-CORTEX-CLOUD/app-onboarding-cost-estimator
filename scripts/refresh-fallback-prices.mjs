@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 /**
- * refresh-fallback-prices.mjs — Update Azure/AWS/GCP fallback-prices.json (package 16).
+ * refresh-fallback-prices.mjs — validate Azure/AWS/GCP fallback-prices.json.
  *
- * Default: validate existing files and stamp capturedAt to now (offline-safe).
- * LIVE=1: attempt live retail/price-list fetches and merge USD meters (fail closed
- * on partial invent — keeps prior meter if live miss; never writes $0).
+ * This script used to stamp every meter's `capturedAt` to the current time
+ * without looking at a single price. That made stale numbers report themselves
+ * as freshly captured, and it silently satisfied the CI age gate — the two
+ * things the age gate exists to catch. It no longer writes timestamps.
  *
- * Prints status every step (heartbeat).
+ * `capturedAt` may only advance when a price was actually observed at the
+ * source, which is what scripts/validate-prices.mjs does (and it records the
+ * observation in sources/price-validations.json so the claim is auditable).
+ *
+ *   node scripts/refresh-fallback-prices.mjs            validate structure only
+ *   node scripts/refresh-fallback-prices.mjs --stamp    advance capturedAt to the
+ *                                                       ledger's verifiedAt dates
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -14,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const LIVE = process.env.LIVE === "1";
+const STAMP = process.argv.includes("--stamp");
 
 const FILES = [
   {
@@ -74,66 +81,60 @@ function validateDoc(doc, expectedProvider, expectedRegion) {
   }
 }
 
-async function tryLiveAzure(doc) {
-  status("LIVE azure: fetching Retail Prices (Event Hubs sample)…");
-  const url =
-    "https://prices.azure.com/api/retail/prices?$filter=armRegionName eq 'eastus' and serviceName eq 'Event Hubs'&$top=50";
-  const res = await fetch(url);
-  if (!res.ok) {
-    status(`LIVE azure: HTTP ${res.status} — keeping existing meters`);
-    return doc;
+/** verifiedAt per meter from the validation ledger — the only legitimate capture date. */
+function ledgerVerifiedDates() {
+  const ledgerPath = path.join(ROOT, "sources/price-validations.json");
+  const ledger = JSON.parse(fs.readFileSync(ledgerPath, "utf8"));
+  const map = new Map();
+  for (const row of ledger.meters ?? []) {
+    if (row.verifiedAt) map.set(row.meterId, `${row.verifiedAt}T00:00:00.000Z`);
   }
-  const body = await res.json();
-  const items = body.Items ?? [];
-  if (items.length === 0) {
-    status("LIVE azure: empty Items — keeping existing meters");
-    return doc;
-  }
-  status(`LIVE azure: got ${items.length} Items (merge skip — keep validated meters)`);
-  // Do not invent mappings here; stamp freshness only after live reachability.
-  return doc;
+  return map;
 }
 
 async function main() {
-  status(`refresh-fallback-prices start LIVE=${LIVE ? "1" : "0"}`);
-  const nowIso = new Date().toISOString();
-  let updated = 0;
+  status(`refresh-fallback-prices start STAMP=${STAMP ? "1" : "0"}`);
+  const verified = STAMP ? ledgerVerifiedDates() : null;
+  let checked = 0;
+  const unstamped = [];
 
   for (const f of FILES) {
     status(`validate ${f.provider} ${f.path}`);
     const raw = JSON.parse(fs.readFileSync(f.path, "utf8"));
     validateDoc(raw, f.provider, f.region);
 
-    let doc = raw;
-    if (LIVE && f.provider === "azure") {
-      try {
-        doc = await tryLiveAzure(doc);
-      } catch (e) {
-        status(
-          `LIVE azure failed: ${e instanceof Error ? e.message : e} — fail closed to stamp-only`,
-        );
-      }
-    } else if (LIVE) {
-      status(`LIVE ${f.provider}: stamp-only (full live merge deferred; no silent $0)`);
+    if (!STAMP) {
+      checked += 1;
+      status(`ok ${f.provider} meters=${raw.meters.length} (capturedAt untouched)`);
+      continue;
     }
 
-    validateDoc(doc, f.provider, f.region);
-    doc = {
-      ...doc,
-      meters: doc.meters.map((m) => ({
-        ...m,
-        capturedAt: nowIso,
-        currency: "USD",
-      })),
+    // Only meters the ledger says were actually observed get a new date.
+    const doc = {
+      ...raw,
+      meters: raw.meters.map((m) => {
+        const at = verified.get(m.meterId);
+        if (!at) {
+          unstamped.push(`${f.provider}/${m.meterId}`);
+          return m;
+        }
+        return { ...m, capturedAt: at, currency: "USD" };
+      }),
     };
     validateDoc(doc, f.provider, f.region);
     fs.writeFileSync(f.path, `${JSON.stringify(doc, null, 2)}\n`);
-    updated += 1;
-    status(`wrote ${f.provider} meters=${doc.meters.length} capturedAt=${nowIso}`);
+    checked += 1;
+    status(`wrote ${f.provider} meters=${doc.meters.length} (dates from ledger verifiedAt)`);
   }
 
-  status(`DONE updated=${updated}/${FILES.length}`);
-  if (updated !== FILES.length) {
+  if (unstamped.length) {
+    status(
+      `left untouched (never verified — run \`pnpm rates:validate --write\`): ${unstamped.join(", ")}`,
+    );
+  }
+
+  status(`DONE updated=${checked}/${FILES.length}`);
+  if (checked !== FILES.length) {
     console.error("refresh-fallback-prices: incomplete update (fail closed)");
     process.exit(1);
   }

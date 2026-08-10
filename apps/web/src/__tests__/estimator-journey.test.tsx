@@ -114,22 +114,31 @@ describe("estimator journey UX", () => {
     );
   });
 
-  it("[TEST] Continue/Back advances Start→Size→Run", () => {
+  it("[TEST] Continue/Back advances Overview→Start→Size→Run", () => {
     render(<App client={createMockClient()} />);
+    // The journey opens on the overview: decide what you want priced before
+    // being asked any sizing questions.
     expect(screen.getByTestId("journey-step-progress").textContent).toMatch(
-      /Step 1 of 3/,
+      /Step 1 of 4/,
+    );
+    expect(screen.getByTestId("journey-step-panel-overview")).not.toHaveAttribute(
+      "hidden",
     );
     fireEvent.click(screen.getByTestId("journey-step-continue"));
     expect(screen.getByTestId("journey-step-progress").textContent).toMatch(
-      /Step 2 of 3/,
+      /Step 2 of 4/,
     );
     fireEvent.click(screen.getByTestId("journey-step-continue"));
     expect(screen.getByTestId("journey-step-progress").textContent).toMatch(
-      /Step 3 of 3/,
+      /Step 3 of 4/,
+    );
+    fireEvent.click(screen.getByTestId("journey-step-continue"));
+    expect(screen.getByTestId("journey-step-progress").textContent).toMatch(
+      /Step 4 of 4/,
     );
     fireEvent.click(screen.getByTestId("journey-step-back"));
     expect(screen.getByTestId("journey-step-progress").textContent).toMatch(
-      /Step 2 of 3/,
+      /Step 3 of 4/,
     );
   });
 
@@ -229,7 +238,7 @@ describe("estimator journey UX", () => {
         "true",
       );
       expect(screen.getByTestId("journey-step-progress").textContent).toMatch(
-        /Step 2 of 3/,
+        /Step 3 of 4/,
       );
     });
     expect(screen.getByTestId("journey-step-panel-size")).not.toHaveAttribute(

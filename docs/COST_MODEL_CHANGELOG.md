@@ -1,5 +1,49 @@
 # Cost model changelog
 
+## 2026-08-10b - DSPM priced per operation, not per gigabyte
+
+DSPM multiplied an estate size in GB by a per-10,000-operations rate. Object
+stores charge scanning per API call and hot/standard tiers have no retrieval
+fee at all, so the old figure was dimensionally meaningless and far too high -
+a 51,200 GB estate at 25% scanned moved from $51.20 to $1.31 per month.
+
+Estate GB now converts to an object count via a new `avgObjectSizeMB` input
+(default 4 MB, always stated in the notes), and the estimate bills one read
+operation per object plus `ceil(objects / pageSize)` list operations. Every
+meter used was already verified against the vendor price lists; a new
+`blob-hot-lrs-list-10k` ($0.05/10K) was added and live-verified.
+
+Also: `egress` was billed by all three estimators but declared in no capability
+map or doc, because `CapabilityId` did not include it. Declared now, and a new
+meter-closure test drives real estimates and asserts every emitted meter is
+both declared and validated - the invariant that would have caught it.
+
+No `modelVersion` bump for the egress declaration; the DSPM formula change is a
+correction of a defect rather than a re-rating, and the old number was not
+defensible in any case.
+
+## 2026-08-10 — price validation ledger, TF-derived capability gating
+
+Rates corrected against the providers' own price lists (Azure Retail Prices API,
+AWS Price List API, GCP pricing docs):
+
+- `blob-hot-lrs-write-10k` 0.055 → **0.05** (Azure retail: Hot LRS Write Operations)
+- `s3-put-10k` 0.005 → **0.05** (repo held the per-1,000 price under a per-10k id)
+- `s3-get-10k` 0.0004 → **0.004** (same 10x unit error)
+- `gcs-standard-storage` 0.020 → **0.022** (us-central1 Standard)
+- `pubsub-message-delivery` 0.04 → **0.0390625** (official SKU is $40/TiB)
+
+Four meters were found not to exist in any vendor price list
+(`acr-pull-bandwidth`, `s3-data-retrieval-band`, `pd-snapshot-storage`,
+`gcs-data-read-band`) and two are correct but wrongly attributed
+(`ecr-data-transfer`, `artifact-registry-egress`). All are now forced to
+Low-confidence bands with a named warning; totals for those capabilities change
+only in confidence, not in amount.
+
+New: `tfMode: as-deployed | what-if` on estimates, and per-line `verification`
+provenance. No `modelVersion` bump — meter formulas are unchanged.
+
+
 Tracks rule / constant updates that bump `modelVersion` in
 `packages/cost-engine/src/model-version.ts`.
 

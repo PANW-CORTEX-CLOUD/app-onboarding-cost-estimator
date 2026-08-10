@@ -250,7 +250,7 @@ describe("package 16 — EDGE", () => {
     expect(frozen.rateCard.unitPrices["eh-standard-tu"]).toBe(0.03);
   });
 
-  it("refresh script stamp produces valid multi-provider JSON", async () => {
+  it("refresh script validates without rewriting capturedAt", async () => {
     const { execFileSync } = await import("node:child_process");
     const path = await import("node:path");
     const fs = await import("node:fs");
@@ -269,24 +269,31 @@ describe("package 16 — EDGE", () => {
       expect(doc.currency).toBe("USD");
       expect(doc.meters.length).toBeGreaterThan(0);
     }
-    const out = execFileSync("node", ["scripts/refresh-fallback-prices.mjs"], {
-      cwd: root,
-      encoding: "utf8",
-      env: { ...process.env, LIVE: "0" },
-    });
-    expect(out).toMatch(/DONE updated=3\/3/);
-    for (const rel of [
+    const rels = [
       "packages/cost-engine/src/providers/azure/fallback-prices.json",
       "packages/cost-engine/src/providers/aws/fallback-prices.json",
       "packages/cost-engine/src/providers/gcp/fallback-prices.json",
-    ]) {
-      const doc = JSON.parse(fs.readFileSync(path.join(root, rel), "utf8"));
+    ];
+    const before = rels.map((rel) => fs.readFileSync(path.join(root, rel), "utf8"));
+
+    const out = execFileSync("node", ["scripts/refresh-fallback-prices.mjs"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    expect(out).toMatch(/DONE updated=3\/3/);
+
+    // Running the suite must not make stale prices look freshly captured:
+    // capturedAt may only move when a price was actually observed at source.
+    rels.forEach((rel, i) => {
+      const after = fs.readFileSync(path.join(root, rel), "utf8");
+      expect(after).toBe(before[i]);
+      const doc = JSON.parse(after);
       expect(doc.currency).toBe("USD");
       for (const m of doc.meters) {
         expect(m.unitPrice).toBeGreaterThanOrEqual(0);
         expect(m.capturedAt).toMatch(/^\d{4}-/);
       }
-    }
+    });
   });
 
   it("ratesCacheKey is stable", () => {

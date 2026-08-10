@@ -130,6 +130,8 @@ describe("package 17 — FSD UI", () => {
     const client = createMockClient();
     render(<App client={client} />);
 
+    fireEvent.click(screen.getByTestId("journey-step-tab-start"));
+
     fireEvent.click(screen.getByRole("radio", { name: "AWS" }));
     fireEvent.click(screen.getByTestId("run-estimate"));
 
@@ -150,6 +152,7 @@ describe("package 17 — FSD UI", () => {
   it("URL state includes provider after selection", async () => {
     const client = createMockClient();
     render(<App client={client} />);
+    fireEvent.click(screen.getByTestId("journey-step-tab-start"));
     fireEvent.click(screen.getByRole("radio", { name: "GCP" }));
     expect(readProviderFromSearch(window.location.search)).toBe("gcp");
     expect(window.location.search).toContain("provider=gcp");
@@ -163,6 +166,8 @@ describe("package 17 — FSD UI", () => {
   it("switching provider refetches capabilities API", async () => {
     const client = createMockClient();
     render(<App client={client} />);
+
+    fireEvent.click(screen.getByTestId("journey-step-tab-start"));
 
     fireEvent.click(screen.getByRole("radio", { name: "AWS" }));
 

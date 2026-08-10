@@ -14,6 +14,8 @@ export type CapabilityVolumeFieldsProps = {
   avgImageGB: number;
   packageCount: number;
   egressGB: number;
+  /** Average scanned object size in MB — converts DSPM estate GB into billable operations. */
+  avgObjectSizeMB: number;
   onChange: (patch: Partial<CapabilityVolumeFieldsProps>) => void;
 };
 
@@ -28,6 +30,7 @@ export function CapabilityVolumeFields({
   avgImageGB,
   packageCount,
   egressGB,
+  avgObjectSizeMB,
   onChange,
 }: CapabilityVolumeFieldsProps) {
   if (
@@ -63,6 +66,24 @@ export function CapabilityVolumeFields({
             />
             <span className="field-hint">
               Required for DSPM (&gt; 0). Total data in scope.
+            </span>
+          </label>
+          <label>
+            Average object size (MB)
+            <input
+              type="number"
+              min={0.001}
+              step={0.5}
+              data-testid="input-avg-object-size-mb"
+              value={avgObjectSizeMB}
+              onChange={(e) =>
+                onChange({ avgObjectSizeMB: Number(e.target.value) || 0 })
+              }
+            />
+            <span className="field-hint">
+              Object stores charge scanning per API call, not per GB, so this is
+              what turns your estate size into billable read and list
+              operations. Smaller objects mean more calls for the same bytes.
             </span>
           </label>
           <label>
