@@ -689,7 +689,17 @@ export function EstimatorPage() {
         setExportFreshness(null);
       }
     } catch {
-      setExportFreshness(null);
+      // Fail closed: a network error here means we could not confirm rates
+      // are fresh, which is not the same as confirming they are. Clearing
+      // this to null would make buildEstimateExport's `needsAck` check treat
+      // "unknown" as "no gate needed," silently disabling the documented
+      // fail-closed export guarantee for exactly the case (flaky network)
+      // where it matters most.
+      setExportFreshness({
+        requiresAckBeforeExport: true,
+        banner:
+          "Could not verify rate freshness (network error) — acknowledge before export.",
+      });
     }
   }, [client, provider, region]);
 
