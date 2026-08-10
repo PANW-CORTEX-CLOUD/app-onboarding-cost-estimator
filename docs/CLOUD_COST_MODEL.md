@@ -11,6 +11,8 @@ Executable meter rows live in:
 
 Doc tables below must match those exports **1:1** (enforced by snapshot tests).
 
+**Per-meter price validation:** [`sources/price-validations.json`](../sources/price-validations.json) — what each rate claims vs what the vendor's price list says, with the date of the last check. 26 of 33 meters are vendor-verified; the rest are forced to Low-confidence bands and warn. See [`NEXT_STEPS.md`](./NEXT_STEPS.md).
+
 **TF ↔ retail audit matrix (Azure SSOT):** [`TF_COST_RECONCILIATION.md`](./TF_COST_RECONCILIATION.md) — only audit Event Hubs + blob LRS bill customer cloud in connector TF; other capabilities are modeled.
 
 ---

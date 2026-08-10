@@ -6,9 +6,9 @@
     {
       "meterId": "pubsub-message-delivery",
       "unit": "GiB",
-      "unitPrice": 0.04,
+      "unitPrice": 0.0390625,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/pubsub/pricing"
     },
     {
@@ -16,15 +16,15 @@
       "unit": "GiB-month",
       "unitPrice": 0.27,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/pubsub/pricing"
     },
     {
       "meterId": "gcs-standard-storage",
       "unit": "GB-month",
-      "unitPrice": 0.02,
+      "unitPrice": 0.022,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/storage/pricing"
     },
     {
@@ -32,7 +32,7 @@
       "unit": "GB-month",
       "unitPrice": 0.026,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/compute/disks-image-pricing"
     },
     {
@@ -40,7 +40,7 @@
       "unit": "hour",
       "unitPrice": 0.0475,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/compute/vm-instance-pricing"
     },
     {
@@ -48,7 +48,7 @@
       "unit": "GB",
       "unitPrice": 0.12,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/storage/pricing"
     },
     {
@@ -56,7 +56,7 @@
       "unit": "GB",
       "unitPrice": 0.12,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/artifact-registry/pricing"
     },
     {
@@ -64,7 +64,7 @@
       "unit": "million-request",
       "unitPrice": 0.4,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/run/pricing"
     },
     {
@@ -72,7 +72,7 @@
       "unit": "10k-ops",
       "unitPrice": 0.05,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/storage/pricing"
     },
     {
@@ -80,7 +80,7 @@
       "unit": "10k-ops",
       "unitPrice": 0.004,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/storage/pricing"
     },
     {
@@ -88,7 +88,7 @@
       "unit": "GB",
       "unitPrice": 0.12,
       "currency": "USD",
-      "capturedAt": "2026-07-30T13:43:57.344Z",
+      "capturedAt": "2026-08-10T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/vpc/network-pricing"
     }
   ]

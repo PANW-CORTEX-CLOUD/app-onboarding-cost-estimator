@@ -1,7 +1,7 @@
 /**
  * Package 19 — Playwright happy-path against local api+web.
  * Package 33 — Azure audit-only meter allowlist (TF-faithful).
- * Journey UX — Inputs → Run → Cost output.
+ * Journey UX — Overview → Inputs → Run → Cost output.
  */
 import { test, expect } from "@playwright/test";
 
@@ -24,6 +24,28 @@ test.describe("MVP happy path", () => {
       "true",
     );
 
+    // Step 1 — decide what to price. Audit logs is the only Azure capability
+    // the connector Terraform actually deploys, so it is the only one that can
+    // survive as-deployed mode.
+    await expect(page.getByTestId("journey-step-progress")).toContainText(
+      "Step 1 of 4",
+    );
+    await expect(page.getByTestId("scope-badge-auditLogs")).toContainText(
+      "Deployed by your Terraform",
+    );
+    await expect(page.getByTestId("scope-badge-dspm")).toContainText(
+      "No Terraform",
+    );
+    await page.getByTestId("scope-cap-dspm").check();
+    await page.getByTestId("tf-mode-as-deployed").check();
+    await expect(page.getByTestId("scope-summary-dropped")).toContainText(
+      "not created by the Terraform",
+    );
+    // Back to what-if and drop DSPM so the rest of the run is the audit-only path.
+    await page.getByTestId("scope-cap-dspm").uncheck();
+    await page.getByTestId("tf-mode-what-if").check();
+    await page.getByTestId("journey-step-continue").click();
+
     await page
       .getByTestId("section-provider-region")
       .getByRole("radio", { name: "AWS", exact: true })
@@ -36,7 +58,7 @@ test.describe("MVP happy path", () => {
     await page.getByTestId("journey-step-continue").click();
     await page.getByTestId("journey-step-continue").click();
     await expect(page.getByTestId("journey-step-progress")).toContainText(
-      "Step 3 of 3",
+      "Step 4 of 4",
     );
     await expect(page.getByTestId("journey-step-continue")).toHaveCount(0);
     await expect(page.getByTestId("view-cost-output")).toHaveCount(0);

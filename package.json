@@ -4,7 +4,7 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "pnpm --filter @cloud-connector/cost-engine build && pnpm --filter @cloud-connector/api build && pnpm --filter @cloud-connector/web build",
-    "test": "node scripts/check-boundaries.mjs && node scripts/check-circular-deps.mjs && node scripts/check-openapi-drift.mjs && node scripts/check-monorepo-layout.mjs && node scripts/check-docker-compose-dev.mjs && node scripts/check-fallback-prices-age.mjs && pnpm test:estimate-cli && pnpm spectral && pnpm --filter @cloud-connector/cost-engine test && pnpm --filter @cloud-connector/api test && pnpm --filter @cloud-connector/web test && pnpm test:e2e",
+    "test": "node scripts/check-boundaries.mjs && node scripts/check-circular-deps.mjs && node scripts/check-openapi-drift.mjs && node scripts/check-monorepo-layout.mjs && node scripts/check-docker-compose-dev.mjs && node scripts/check-fallback-prices-age.mjs && node scripts/validate-prices.mjs --check && node scripts/derive-tf-manifest.mjs && pnpm test:estimate-cli && pnpm spectral && pnpm --filter @cloud-connector/cost-engine test && pnpm --filter @cloud-connector/api test && pnpm --filter @cloud-connector/web test && pnpm test:e2e",
     "dev:docker": "docker compose -f docker-compose.dev.yml up --build",
     "test:e2e": "pnpm --filter @cloud-connector/web test:e2e",
     "dev:api": "pnpm --filter @cloud-connector/api start",
@@ -14,13 +14,17 @@
     "openapi:stamp": "node scripts/check-openapi-drift.mjs --write",
     "openapi:gen": "node scripts/generate-openapi-types.mjs",
     "rates:refresh-fallback": "node scripts/refresh-fallback-prices.mjs",
+    "rates:validate": "node scripts/validate-prices.mjs",
+    "rates:validate-check": "node scripts/validate-prices.mjs --check",
+    "tf:manifest": "node scripts/derive-tf-manifest.mjs --write",
     "estimate": "node scripts/estimate.mjs",
     "estimate:check": "node scripts/estimate.mjs --check",
     "test:estimate-cli": "node --test scripts/lib/estimate-check.test.mjs"
   },
   "devDependencies": {
     "@stoplight/spectral-cli": "^6.16.2",
-    "openapi-typescript": "^7.13.0"
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=22"

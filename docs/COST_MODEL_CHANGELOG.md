@@ -1,5 +1,27 @@
 # Cost model changelog
 
+## 2026-08-10 — price validation ledger, TF-derived capability gating
+
+Rates corrected against the providers' own price lists (Azure Retail Prices API,
+AWS Price List API, GCP pricing docs):
+
+- `blob-hot-lrs-write-10k` 0.055 → **0.05** (Azure retail: Hot LRS Write Operations)
+- `s3-put-10k` 0.005 → **0.05** (repo held the per-1,000 price under a per-10k id)
+- `s3-get-10k` 0.0004 → **0.004** (same 10x unit error)
+- `gcs-standard-storage` 0.020 → **0.022** (us-central1 Standard)
+- `pubsub-message-delivery` 0.04 → **0.0390625** (official SKU is $40/TiB)
+
+Four meters were found not to exist in any vendor price list
+(`acr-pull-bandwidth`, `s3-data-retrieval-band`, `pd-snapshot-storage`,
+`gcs-data-read-band`) and two are correct but wrongly attributed
+(`ecr-data-transfer`, `artifact-registry-egress`). All are now forced to
+Low-confidence bands with a named warning; totals for those capabilities change
+only in confidence, not in amount.
+
+New: `tfMode: as-deployed | what-if` on estimates, and per-line `verification`
+provenance. No `modelVersion` bump — meter formulas are unchanged.
+
+
 Tracks rule / constant updates that bump `modelVersion` in
 `packages/cost-engine/src/model-version.ts`.
 

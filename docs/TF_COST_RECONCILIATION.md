@@ -2,6 +2,8 @@
 
 **Package:** `30–33` (TF vs retail audit)  
 **Executable allowlist:** `packages/cost-engine/src/providers/azure/tf-audit-reconciliation.ts`  
+**Derived manifest:** [`sources/tf-feature-manifest.json`](../sources/tf-feature-manifest.json) — produced by `scripts/derive-tf-manifest.mjs` walking `azure/data`. A test asserts the derived meters equal the allowlist above, so the two derivations cannot drift.  
+**Modes:** `tfMode: as-deployed` prices only deployed modules (comparable to a first invoice); `what-if` also prices capabilities with no connector TF.  
 **Related:** [`CLOUD_COST_MODEL.md`](./CLOUD_COST_MODEL.md), [`COST_MODEL_CHANGELOG.md`](./COST_MODEL_CHANGELOG.md)
 
 Azure [`azure/data/`](../azure/data/) is the **only** connector IaC SSOT. AWS/GCP paths are README stubs — estimates there are **modeled defaults**, not TF-grounded.
@@ -42,7 +44,10 @@ Exactly these three meters when Azure · audit-only (ops meters only if write/re
 
 Optional (not TF-invented; only when ops inputs > 0): `blob-hot-lrs-write-10k`, `blob-hot-lrs-read-10k`.
 
-## Retail rate check (eastus, Consumption) — 2026-07-29
+## Retail rate check (eastus, Consumption) — 2026-08-10
+
+Re-verified live against the Azure Retail Prices API by `scripts/validate-prices.mjs`;
+per-meter results in [`sources/price-validations.json`](../sources/price-validations.json).
 
 Live Azure Retail Prices API vs in-repo [`fallback-prices.json`](../packages/cost-engine/src/providers/azure/fallback-prices.json):
 
@@ -51,6 +56,8 @@ Live Azure Retail Prices API vs in-repo [`fallback-prices.json`](../packages/cos
 | `eh-standard-tu` | $0.03 / hour | $0.03 | Yes |
 | `eh-standard-ingress-events` | $0.028 / 1M | $0.028 | Yes |
 | `blob-hot-lrs-capacity` | $0.0208 / GB-mo (list Hot LRS) | $0.0208 | Yes |
+| `blob-hot-lrs-write-10k` | $0.05 / 10K | $0.05 | Yes — corrected from 0.055 on 2026-08-10 |
+| `blob-hot-lrs-read-10k` | $0.004 / 10K | $0.004 | Yes |
 
 Capture retail exists (`Standard Capture` ~$0.10/hr) but **must not** appear in estimates (TF has no Capture).
 

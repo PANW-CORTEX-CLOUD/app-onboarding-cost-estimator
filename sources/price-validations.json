@@ -1,0 +1,784 @@
+{
+  "schemaVersion": 1,
+  "description": "Atomic per-meter validation ledger. One row per meterId: what the estimator CLAIMS vs what the official source SAYS. Re-crawled by scripts/validate-prices.mjs when verifiedAt is older than maxAgeDays[method]. Never edit verdict/observed by hand without re-running the crawler. A row that cannot be checked at all records lastAttemptedAt + blockedReason: the age clock resets so CI is not permanently red, but the verdict stays untrusted so the number is never presented as a vendor price.",
+  "maxAgeDays": {
+    "azure-retail-api": 30,
+    "aws-price-list-api": 30,
+    "official-doc": 90
+  },
+  "verdicts": {
+    "verified": "Observed official price equals the claimed price within tolerance, and the units line up.",
+    "mismatch": "Official source has a different price or a different unit denominator than claimed. Estimate is wrong until fixed.",
+    "unsupported-meter": "The official price list has no such meter. The number is a proxy invented by this repo \u2014 it must not be presented as a vendor price.",
+    "proxy": "Number is officially correct but is sourced from a different service's price list than the meterId/sourceUrl claims.",
+    "unverified": "Not yet checked against an official source."
+  },
+  "meters": [
+    {
+      "meterId": "eh-standard-tu",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.03,
+      "claimedUnit": "TU-hour",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Event Hubs",
+        "meterName": "Standard Throughput Unit",
+        "expectedUnitOfMeasure": "1 Hour"
+      },
+      "observed": {
+        "unitPrice": 0.03,
+        "unitOfMeasure": "1 Hour",
+        "skuName": "Standard",
+        "productName": "Event Hubs"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/event-hubs/",
+      "notes": "TF azure/data sets sku=Standard capacity=1 auto_inflate max 20."
+    },
+    {
+      "meterId": "eh-standard-ingress-events",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.028,
+      "claimedUnit": "million-events",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Event Hubs",
+        "meterName": "Standard Ingress Events",
+        "expectedUnitOfMeasure": "1M"
+      },
+      "observed": {
+        "unitPrice": 0.028,
+        "unitOfMeasure": "1M",
+        "skuName": "Standard",
+        "productName": "Event Hubs"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/event-hubs/"
+    },
+    {
+      "meterId": "blob-hot-lrs-capacity",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.0208,
+      "claimedUnit": "GB-month",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Storage",
+        "meterName": "Hot LRS Data Stored",
+        "productName": "Blob Storage",
+        "expectedUnitOfMeasure": "1 GB/Month",
+        "pick": "max"
+      },
+      "observed": {
+        "unitPrice": 0.0208,
+        "unitOfMeasure": "1 GB/Month",
+        "skuName": "Hot LRS",
+        "productName": "Blob Storage"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
+      "notes": "First capacity tier (0-50TB). Retail also lists 0.019968 / 0.019136 for higher tiers; estimator prices the first tier only."
+    },
+    {
+      "meterId": "blob-hot-lrs-write-10k",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.05,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Storage",
+        "meterName": "Hot LRS Write Operations",
+        "productName": "Blob Storage",
+        "expectedUnitOfMeasure": "10K"
+      },
+      "observed": {
+        "unitPrice": 0.05,
+        "unitOfMeasure": "10K",
+        "skuName": "Hot LRS",
+        "productName": "Blob Storage"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
+      "notes": "Corrected 2026-08-10: repo previously claimed 0.055, retail says 0.05."
+    },
+    {
+      "meterId": "blob-hot-lrs-read-10k",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.004,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Storage",
+        "meterName": "Hot Read Operations",
+        "productName": "Blob Storage",
+        "expectedUnitOfMeasure": "10K"
+      },
+      "observed": {
+        "unitPrice": 0.004,
+        "unitOfMeasure": "10K",
+        "skuName": "Hot RA-GRS",
+        "productName": "Blob Storage",
+        "tiersSeen": [
+          0.004,
+          0.004,
+          0.004
+        ]
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
+    },
+    {
+      "meterId": "managed-disk-snapshot",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.05,
+      "claimedUnit": "GB-month",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Storage",
+        "meterName": "LRS Snapshots",
+        "productName": "Standard HDD Managed Disks",
+        "expectedUnitOfMeasure": "1 GB/Month"
+      },
+      "observed": {
+        "unitPrice": 0.05,
+        "unitOfMeasure": "1 GB/Month",
+        "skuName": "Snapshots LRS",
+        "productName": "Standard HDD Managed Disks"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/managed-disks/",
+      "notes": "Standard HDD LRS snapshot tier. Premium/SSD-backed snapshots bill 0.132-0.198 per GB-month; estimator assumes the Standard HDD tier."
+    },
+    {
+      "meterId": "vm-outpost-scanner",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.096,
+      "claimedUnit": "hour",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Virtual Machines",
+        "armSkuName": "Standard_D2s_v3",
+        "meterName": "D2s v3",
+        "productName": "Virtual Machines DSv3 Series",
+        "expectedUnitOfMeasure": "1 Hour"
+      },
+      "observed": {
+        "unitPrice": 0.096,
+        "unitOfMeasure": "1 Hour",
+        "skuName": "D2s v3",
+        "productName": "Virtual Machines DSv3 Series"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/",
+      "notes": "Linux on-demand D2s v3. The Windows meter is 0.188/hour \u2014 do not mix."
+    },
+    {
+      "meterId": "azure-egress-gb",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.087,
+      "claimedUnit": "GB",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Bandwidth",
+        "meterName": "Standard Data Transfer Out",
+        "expectedUnitOfMeasure": "1 GB",
+        "pick": "max"
+      },
+      "observed": {
+        "unitPrice": 0.087,
+        "unitOfMeasure": "1 GB",
+        "skuName": "Standard",
+        "productName": "Rtn Preference: MGN",
+        "tiersSeen": [
+          0.087,
+          0.083,
+          0.08,
+          0.07,
+          0.065,
+          0.06,
+          0.05,
+          0.05,
+          0.04
+        ]
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/bandwidth/",
+      "notes": "First paid tier after the 100 GB/month free allowance. Estimator does not model the free allowance."
+    },
+    {
+      "meterId": "blob-data-read-ops",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.004,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Storage",
+        "meterName": "Hot Read Operations",
+        "productName": "Blob Storage",
+        "expectedUnitOfMeasure": "10K"
+      },
+      "observed": {
+        "unitPrice": 0.004,
+        "unitOfMeasure": "10K",
+        "skuName": "Hot RA-GRS",
+        "productName": "Blob Storage",
+        "tiersSeen": [
+          0.004,
+          0.004,
+          0.004
+        ]
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
+      "dimension": "ops",
+      "notes": "Price is per 10k operations, NOT per GB. DSPM must convert scanned GB to read operations via an explicit object-size assumption."
+    },
+    {
+      "meterId": "acr-pull-bandwidth",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.01,
+      "claimedUnit": "GB",
+      "verdict": "unsupported-meter",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Container Registry",
+        "meterName": "*",
+        "expectedUnitOfMeasure": "1 GB",
+        "expectAbsent": true
+      },
+      "observed": {
+        "unitPrice": null,
+        "note": "no USD Consumption item matched serviceName=Container Registry meterName=* unitOfMeasure=1 GB in eastus",
+        "assertionHeld": true
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/container-registry/",
+      "notes": "ACR egress is billed through the Bandwidth service, and same-region pulls are not charged. 0.01/GB matches no Azure SKU."
+    },
+    {
+      "meterId": "functions-scan-ops",
+      "provider": "azure",
+      "region": "eastus",
+      "claimedUnitPrice": 0.2,
+      "claimedUnit": "million-exec",
+      "verdict": "verified",
+      "method": "azure-retail-api",
+      "probe": {
+        "serviceName": "Functions",
+        "meterName": "Standard Total Executions",
+        "expectedUnitOfMeasure": "10",
+        "scaleToClaimed": 100000
+      },
+      "observed": {
+        "unitPrice": 2e-06,
+        "unitOfMeasure": "10",
+        "skuName": "Standard",
+        "productName": "Functions",
+        "derivedClaimedUnitPrice": 0.19999999999999998
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/functions/",
+      "notes": "Retail quotes 0.000002 per 10 executions = 0.20 per million. Free grant of 1M executions/month is not modelled."
+    },
+    {
+      "meterId": "kinesis-shard-hour",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.015,
+      "claimedUnit": "shard-hour",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "$0.015 per hour"
+      },
+      "observed": {
+        "unitPrice": 0.015,
+        "unitOfMeasure": "shard-hour"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/kinesis/data-streams/pricing/",
+      "notes": "Provisioned mode. One shard = 1 MB/s write, ~1000 records/s."
+    },
+    {
+      "meterId": "kinesis-put-payload-units",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.014,
+      "claimedUnit": "million-payload-units",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "$0.014 per million PUT payload units; a PUT Payload Unit is 25 KB"
+      },
+      "observed": {
+        "unitPrice": 0.014,
+        "unitOfMeasure": "million-payload-units",
+        "payloadUnitKb": 25
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/kinesis/data-streams/pricing/"
+    },
+    {
+      "meterId": "s3-standard-storage",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.023,
+      "claimedUnit": "GB-month",
+      "verdict": "verified",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AmazonS3",
+        "usagetype": "TimedStorage-ByteHrs",
+        "expectedUnit": "GB-Mo",
+        "beginRange": "0"
+      },
+      "observed": {
+        "unitPrice": 0.023,
+        "unitOfMeasure": "GB-Mo",
+        "description": "$0.023 per GB - first 50 TB / month of storage used",
+        "tiersSeen": [
+          0.3,
+          0.06,
+          0.0265,
+          0.023,
+          0.023
+        ]
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
+    },
+    {
+      "meterId": "s3-put-10k",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.05,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AmazonS3",
+        "usagetype": "Requests-Tier1",
+        "expectedUnit": "Requests",
+        "scaleToClaimed": 10000
+      },
+      "observed": {
+        "unitPrice": 5e-06,
+        "unitOfMeasure": "Requests",
+        "description": "$0.005 per 1,000 PUT Requests/COPY/POST or LIST Requests to S3 Table Buckets in US East (N. Virginia)",
+        "derivedClaimedUnitPrice": 0.05,
+        "tiersSeen": [
+          5e-06,
+          5e-06
+        ]
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/",
+      "notes": "Corrected 2026-08-10: repo carried the per-1,000 price (0.005) under a per-10k meterId \u2014 a 10x understatement."
+    },
+    {
+      "meterId": "s3-get-10k",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.004,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AmazonS3",
+        "usagetype": "Requests-Tier2",
+        "expectedUnit": "Requests",
+        "scaleToClaimed": 10000
+      },
+      "observed": {
+        "unitPrice": 4e-07,
+        "unitOfMeasure": "Requests",
+        "description": "$0.004 per 10,000 GET and all other requests",
+        "derivedClaimedUnitPrice": 0.004,
+        "tiersSeen": [
+          4e-07,
+          4e-07
+        ]
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/",
+      "notes": "Corrected 2026-08-10: repo carried 0.0004 (the per-1,000 figure) under a per-10k meterId."
+    },
+    {
+      "meterId": "ebs-snapshot-storage",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.05,
+      "claimedUnit": "GB-month",
+      "verdict": "verified",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AmazonEC2",
+        "usagetype": "EBS:SnapshotUsage",
+        "expectedUnit": "GB-Mo"
+      },
+      "observed": {
+        "unitPrice": 0.05,
+        "unitOfMeasure": "GB-Mo",
+        "description": "$0.05 per GB-Month of snapshot data stored - US East (Northern Virginia)"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/ebs/pricing/"
+    },
+    {
+      "meterId": "ec2-outpost-scanner",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.0416,
+      "claimedUnit": "hour",
+      "verdict": "verified",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AmazonEC2",
+        "usagetype": "BoxUsage:t3.medium",
+        "operatingSystem": "Linux",
+        "tenancy": "Shared",
+        "capacitystatus": "Used",
+        "preInstalledSw": "NA",
+        "expectedUnit": "Hrs"
+      },
+      "observed": {
+        "unitPrice": 0.0416,
+        "unitOfMeasure": "Hrs",
+        "description": "$0.0416 per On Demand Linux t3.medium Instance Hour"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/"
+    },
+    {
+      "meterId": "aws-egress-gb",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.09,
+      "claimedUnit": "GB",
+      "verdict": "verified",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AWSDataTransfer",
+        "fromLocation": "US East (N. Virginia)",
+        "transferType": "AWS Outbound",
+        "beginRange": "0",
+        "expectedUnit": "GB"
+      },
+      "observed": {
+        "unitPrice": 0.09,
+        "unitOfMeasure": "GB",
+        "description": "$0.090 per GB - first 10 TB / month data transfer out beyond the global free tier"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/",
+      "notes": "Tiers beyond 10 TB drop to 0.085 / 0.070 / 0.050. Estimator prices the first tier only."
+    },
+    {
+      "meterId": "lambda-scan-ops",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.2,
+      "claimedUnit": "million-request",
+      "verdict": "verified",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AWSLambda",
+        "usagetype": "Request",
+        "expectedUnit": "Requests",
+        "scaleToClaimed": 1000000
+      },
+      "observed": {
+        "unitPrice": 2e-07,
+        "unitOfMeasure": "Requests",
+        "description": "$0.0000002 per Request for Lambda-Managed-Instances-Request in US East (N. Virginia)",
+        "derivedClaimedUnitPrice": 0.19999999999999998,
+        "tiersSeen": [
+          2e-07,
+          2e-07
+        ]
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/lambda/pricing/",
+      "notes": "Request charge only. GB-second duration (0.0000166667) is not modelled by the scan estimator."
+    },
+    {
+      "meterId": "s3-data-retrieval-band",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.0004,
+      "claimedUnit": "GB",
+      "verdict": "unsupported-meter",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AmazonS3",
+        "usagetype": "Retrieval-Standard",
+        "expectedUnit": "GB",
+        "expectAbsent": true
+      },
+      "observed": {
+        "unitPrice": null,
+        "note": "no priced GB dimension matched usagetype=Retrieval-Standard in offer AmazonS3",
+        "assertionHeld": true
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/s3/pricing/",
+      "notes": "DSPM S3 scanning really costs GET requests (Requests-Tier2) plus egress if the scanner is out-of-region."
+    },
+    {
+      "meterId": "ecr-data-transfer",
+      "provider": "aws",
+      "region": "us-east-1",
+      "claimedUnitPrice": 0.09,
+      "claimedUnit": "GB",
+      "verdict": "proxy",
+      "method": "aws-price-list-api",
+      "probe": {
+        "offer": "AWSDataTransfer",
+        "fromLocation": "US East (N. Virginia)",
+        "transferType": "AWS Outbound",
+        "beginRange": "0",
+        "expectedUnit": "GB",
+        "attributionMismatch": true
+      },
+      "observed": {
+        "unitPrice": 0.09,
+        "unitOfMeasure": "GB",
+        "description": "$0.090 per GB - first 10 TB / month data transfer out beyond the global free tier"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://aws.amazon.com/ecr/pricing/",
+      "notes": "Numerically right, wrongly attributed. Same-region pulls are free, which the estimator already models via crossRegionPull=false."
+    },
+    {
+      "meterId": "pubsub-message-delivery",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.0390625,
+      "claimedUnit": "GiB",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "$40 per TiB in all Google Cloud regions",
+        "scaleToClaimed": 0.0009765625
+      },
+      "observed": {
+        "unitPrice": 40,
+        "unitOfMeasure": "TiB",
+        "derivedPerGib": 0.0390625
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/pubsub/pricing",
+      "notes": "Corrected 2026-08-10: repo used a rounded 0.04/GiB (2.4% high). Official SKU is per TiB; 40/1024 = 0.0390625. First 10 GiB/month per billing account is free and is not modelled."
+    },
+    {
+      "meterId": "pubsub-storage",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.27,
+      "claimedUnit": "GiB-month",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Storage costs of $0.27 per GiB-month are charged for when a snapshot of a subscription is created"
+      },
+      "observed": {
+        "unitPrice": 0.27,
+        "unitOfMeasure": "GiB-month"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/pubsub/pricing"
+    },
+    {
+      "meterId": "gcs-standard-storage",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.022,
+      "claimedUnit": "GB-month",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Standard storage in us-central1 is billed at $0.022 per GB per month"
+      },
+      "observed": {
+        "unitPrice": 0.022,
+        "unitOfMeasure": "GB-month"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/storage/pricing",
+      "notes": "Corrected 2026-08-10: repo claimed 0.020, which is the pre-2024 regional rate."
+    },
+    {
+      "meterId": "gcs-class-a-10k",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.05,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Class A operations: $0.005 per 1,000 operations",
+        "scaleToClaimed": 10
+      },
+      "observed": {
+        "unitPrice": 0.005,
+        "unitOfMeasure": "1k-ops",
+        "derivedPer10k": 0.05
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/storage/pricing"
+    },
+    {
+      "meterId": "gcs-class-b-10k",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.004,
+      "claimedUnit": "10k-ops",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Class B operations: $0.004 per 10,000 operations"
+      },
+      "observed": {
+        "unitPrice": 0.004,
+        "unitOfMeasure": "10k-ops"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/storage/pricing"
+    },
+    {
+      "meterId": "gcp-egress-gb",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.12,
+      "claimedUnit": "GB",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Premium tier internet data transfer out, first tier: $0.12 per GiB"
+      },
+      "observed": {
+        "unitPrice": 0.12,
+        "unitOfMeasure": "GiB"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/vpc/network-pricing",
+      "notes": "Premium network tier, first pricing tier. Standard tier and higher volume tiers are cheaper and are not modelled."
+    },
+    {
+      "meterId": "cloud-run-scan-ops",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.4,
+      "claimedUnit": "million-request",
+      "verdict": "verified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "$0.40 per million requests"
+      },
+      "observed": {
+        "unitPrice": 0.4,
+        "unitOfMeasure": "million-request"
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/run/pricing",
+      "notes": "Request charge only; vCPU-second and GiB-second are not modelled by the scan estimator."
+    },
+    {
+      "meterId": "pd-snapshot-storage",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.026,
+      "claimedUnit": "GB-month",
+      "verdict": "unsupported-meter",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Standard snapshots are priced the same as the underlying disk storage; archive snapshots are $0.019/GB-month regional and $0.024/GB-month multi-regional"
+      },
+      "observed": {
+        "unitPrice": null,
+        "note": "There is no flat 0.026/GB-month snapshot SKU. Standard snapshot cost tracks the source disk type (PD Standard, PD Balanced, PD SSD), so a single constant cannot be correct across estates."
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/compute/disks-image-pricing",
+      "notes": "ADS on GCP needs a source-disk-type input before this can be priced honestly."
+    },
+    {
+      "meterId": "gcs-data-read-band",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.12,
+      "claimedUnit": "GB",
+      "verdict": "unsupported-meter",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Data reads from Cloud Storage by a service in the same region are not charged; internet egress is $0.12/GiB"
+      },
+      "observed": {
+        "unitPrice": null,
+        "note": "Cloud Storage has no per-GB read charge. 0.12/GB is the internet egress rate reused as a read rate; in-region scanning would really cost Class B operations only."
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/storage/pricing",
+      "notes": "DSPM GCS scanning should be priced as Class B ops (gcs-class-b-10k) plus egress only when the scanner is out-of-region."
+    },
+    {
+      "meterId": "artifact-registry-egress",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.12,
+      "claimedUnit": "GB",
+      "verdict": "proxy",
+      "method": "official-doc",
+      "probe": {
+        "quote": "Artifact Registry network egress is billed at standard Compute Engine network rates; same-region egress is free"
+      },
+      "observed": {
+        "unitPrice": 0.12,
+        "unitOfMeasure": "GiB",
+        "note": "Number equals the VPC premium-tier internet egress rate, not an Artifact Registry SKU."
+      },
+      "verifiedAt": "2026-08-10",
+      "sourceUrl": "https://cloud.google.com/artifact-registry/pricing",
+      "notes": "Numerically right for cross-region/internet pulls, wrongly attributed to the Artifact Registry price list."
+    },
+    {
+      "meterId": "gce-outpost-scanner",
+      "provider": "gcp",
+      "region": "us-central1",
+      "claimedUnitPrice": 0.0475,
+      "claimedUnit": "hour",
+      "verdict": "unverified",
+      "method": "official-doc",
+      "probe": {
+        "quote": "pending \u2014 needs a named machine type before it can be checked"
+      },
+      "observed": {
+        "unitPrice": null,
+        "note": "Crawl attempted 2026-08-10 against cloud.google.com/compute/vm-instance-pricing: no machine-readable rate available and the repo records no machine type for the 0.0475/hour claim."
+      },
+      "verifiedAt": null,
+      "sourceUrl": "https://cloud.google.com/compute/vm-instance-pricing",
+      "notes": "Pick and document a scanner machine type (as Azure does with D2s v3 and AWS with t3.medium), then verify.",
+      "lastAttemptedAt": "2026-08-10",
+      "blockedReason": "Google publishes no keyless machine-readable price feed (the Cloud Billing Catalog API requires an API key) and the pricing pages render their tables client-side, so no automated probe can read this rate. Azure and AWS name a scanner SKU (D2s v3 / t3.medium); GCP must name one too before this can be checked."
+    }
+  ]
+}

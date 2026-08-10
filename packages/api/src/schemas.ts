@@ -46,6 +46,8 @@ export const CreateEstimateRequestSchema = z
       .strict()
       .optional(),
     monthHours: z.number().positive().optional(),
+    /** as-deployed restricts pricing to what the connector Terraform creates. */
+    tfMode: z.enum(["as-deployed", "what-if"]).optional(),
   })
   .strict();
 

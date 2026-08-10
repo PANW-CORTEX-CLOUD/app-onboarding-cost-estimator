@@ -62,6 +62,7 @@ import {
   isDiscoveryOnly,
 } from "../../widgets/CapabilityToggles/CapabilityToggles.tsx";
 import { ScopeAccounts } from "../../widgets/ScopeAccounts/ScopeAccounts.tsx";
+import type { TfMode } from "../../shared/model/tf-grounding.ts";
 import { VolumeSignalsForm } from "../../widgets/VolumeSignals/VolumeSignalsForm.tsx";
 import { CostBreakdown } from "../../widgets/CostBreakdown/CostBreakdown.tsx";
 import { CostDrivers } from "../../widgets/CostDrivers/CostDrivers.tsx";
@@ -91,6 +92,7 @@ import { InputsCsvPanel } from "../../widgets/InputsCsvPanel/InputsCsvPanel.tsx"
 import { JourneyIntro } from "../../widgets/JourneyIntro/JourneyIntro.tsx";
 import { EstimatorJourneyShell } from "../../widgets/EstimatorJourneyShell/EstimatorJourneyShell.tsx";
 import { InputsJourneySteps } from "../../widgets/InputsJourneySteps/InputsJourneySteps.tsx";
+import { ScopeOverview } from "../../widgets/ScopeOverview/ScopeOverview.tsx";
 import { CostOutputEmpty } from "../../widgets/CostOutputEmpty/CostOutputEmpty.tsx";
 import { JourneyChecklist } from "../../widgets/JourneyChecklist/JourneyChecklist.tsx";
 import type { EstimatorInputsState } from "../../features/estimator-inputs-csv/estimatorInputsCsv.ts";
@@ -225,7 +227,10 @@ export function EstimatorPage() {
   const [journeyMode, setJourneyMode] = useState<JourneyMode>(() =>
     readJourneyViewFromSearch(),
   );
-  const [inputsStep, setInputsStep] = useState<InputsJourneyStep>("start");
+  const [inputsStep, setInputsStep] = useState<InputsJourneyStep>("overview");
+  // Default to what-if so existing links and presets keep their totals; the
+  // overview step is where a user opts into as-deployed pricing.
+  const [tfMode, setTfMode] = useState<TfMode>("what-if");
   const switchToCostOnSuccessRef = useRef(false);
 
   const discoveryOnly = isDiscoveryOnly(caps);
@@ -780,6 +785,7 @@ export function EstimatorPage() {
         provider,
         region,
         capabilities: caps,
+        tfMode,
         monthHours,
         volume: {
           accountCount,
@@ -1356,6 +1362,25 @@ export function EstimatorPage() {
                     egressGB,
                   }}
                 />
+              }
+              overview={
+                <SectionErrorBoundary sectionId="scope-overview">
+                  <EstimatorSection
+                    id="scope-overview"
+                    title="What do you want to estimate?"
+                    loading={capsLoading}
+                    error={capsError}
+                  >
+                    <ScopeOverview
+                      provider={provider}
+                      value={caps}
+                      onChange={onCapsChange}
+                      tfMode={tfMode}
+                      onTfModeChange={setTfMode}
+                      disabled={loading}
+                    />
+                  </EstimatorSection>
+                </SectionErrorBoundary>
               }
               start={
                 <>

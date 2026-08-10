@@ -3,7 +3,11 @@
  */
 export type JourneyMode = "inputs" | "cost";
 
-export type InputsJourneyStep = "start" | "size" | "run";
+/**
+ * Inputs wizard order: decide what you want, then answer only the questions
+ * that choice implies, then run.
+ */
+export type InputsJourneyStep = "overview" | "start" | "size" | "run";
 
 export function isJourneyMode(raw: string | null | undefined): raw is JourneyMode {
   return raw === "inputs" || raw === "cost";
@@ -47,6 +51,9 @@ export function inputsStepForJumpTarget(
     inputTestId === "override-stream-metrics"
   ) {
     return "run";
+  }
+  if (inputTestId.startsWith("scope-") || inputTestId.startsWith("tf-mode-")) {
+    return "overview";
   }
   if (
     inputTestId.startsWith("cap-") ||

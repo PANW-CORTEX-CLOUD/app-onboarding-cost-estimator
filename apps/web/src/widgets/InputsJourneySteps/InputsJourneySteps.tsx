@@ -1,5 +1,5 @@
 /**
- * Inputs wizard steps — Start → Size → Assumptions & run.
+ * Inputs wizard steps — Overview → Start → Size → Assumptions & run.
  * Keep all panels mounted; hide inactive so form state / auto-run survive.
  * Continue is hidden on the last step (Run is the primary CTA there).
  */
@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { InputsJourneyStep } from "../../shared/lib/journey-view.ts";
 
 const STEPS: { id: InputsJourneyStep; label: string }[] = [
+  { id: "overview", label: "What to estimate" },
   { id: "start", label: "Start" },
   { id: "size", label: "Size" },
   { id: "run", label: "Assumptions & run" },
@@ -17,6 +18,7 @@ export type InputsJourneyStepsProps = {
   onStepChange: (step: InputsJourneyStep) => void;
   /** Optional checklist (missing fields). */
   checklist?: ReactNode;
+  overview: ReactNode;
   start: ReactNode;
   size: ReactNode;
   run: ReactNode;
@@ -26,6 +28,7 @@ export function InputsJourneySteps({
   step,
   onStepChange,
   checklist,
+  overview,
   start,
   size,
   run,
@@ -65,6 +68,14 @@ export function InputsJourneySteps({
         ))}
       </div>
       {checklist}
+      <div
+        data-testid="journey-step-panel-overview"
+        hidden={step !== "overview"}
+        aria-hidden={step !== "overview"}
+        className="journey-step-panel"
+      >
+        {overview}
+      </div>
       <div
         data-testid="journey-step-panel-start"
         hidden={step !== "start"}

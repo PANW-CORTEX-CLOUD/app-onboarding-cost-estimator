@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "provider": "azure",
+  "inventoryRoot": "azure/data",
+  "description": "Derived from the connector Terraform by scripts/derive-tf-manifest.mjs. `deployed` means the module is listed in template_version AND its .tf declares resources. Only capabilities marked deployed can be priced as as-deployed cost.",
+  "modules": [
+    {
+      "moduleId": "AUDIT_LOGS-audit_common_resources",
+      "file": "azure/data/AUDIT_LOGS-audit_common_resources.tf",
+      "capability": "audit_logs",
+      "deployed": true,
+      "selectedInTemplateVersion": true,
+      "emptyFile": false,
+      "templateVersion": "1.0.3",
+      "resourceCount": 4,
+      "resourceTypes": [
+        "azurerm_federated_identity_credential",
+        "azurerm_role_assignment",
+        "azurerm_storage_account",
+        "azurerm_user_assigned_identity"
+      ],
+      "billableMeters": [
+        "blob-hot-lrs-capacity"
+      ]
+    },
+    {
+      "moduleId": "AUDIT_LOGS-audit_organization",
+      "file": "azure/data/AUDIT_LOGS-audit_organization.tf",
+      "capability": "audit_logs",
+      "deployed": true,
+      "selectedInTemplateVersion": true,
+      "emptyFile": false,
+      "templateVersion": "1.0.13",
+      "resourceCount": 8,
+      "resourceTypes": [
+        "azapi_resource",
+        "azurerm_eventhub",
+        "azurerm_eventhub_consumer_group",
+        "azurerm_eventhub_namespace",
+        "azurerm_eventhub_namespace_authorization_rule",
+        "azurerm_role_assignment",
+        "null_resource"
+      ],
+      "billableMeters": [
+        "eh-standard-ingress-events",
+        "eh-standard-tu"
+      ]
+    },
+    {
+      "moduleId": "BASE-base_organization",
+      "file": "azure/data/main.tf",
+      "capability": "base",
+      "deployed": true,
+      "selectedInTemplateVersion": true,
+      "emptyFile": false,
+      "templateVersion": "1.3.10",
+      "resourceCount": 15,
+      "resourceTypes": [
+        "azuread_app_role_assignment",
+        "azuread_service_principal",
+        "azurerm_management_group_policy_assignment",
+        "azurerm_policy_definition",
+        "azurerm_resource_group",
+        "azurerm_role_assignment",
+        "azurerm_role_definition",
+        "azurerm_user_assigned_identity",
+        "terracurl_request"
+      ],
+      "billableMeters": []
+    },
+    {
+      "moduleId": "DISCOVERY-assets_discovery",
+      "file": "azure/data/DISCOVERY-assets_discovery.tf",
+      "capability": "discovery",
+      "deployed": false,
+      "selectedInTemplateVersion": true,
+      "emptyFile": true,
+      "templateVersion": "1.1.6",
+      "resourceCount": 0,
+      "resourceTypes": [],
+      "billableMeters": []
+    },
+    {
+      "moduleId": "modules_notification_data",
+      "file": "azure/data/modules_notification_data.tf",
+      "capability": "unmapped",
+      "deployed": false,
+      "selectedInTemplateVersion": false,
+      "emptyFile": false,
+      "templateVersion": null,
+      "resourceCount": 1,
+      "resourceTypes": [
+        "null_resource"
+      ],
+      "billableMeters": []
+    }
+  ],
+  "deployedBillableMeters": [
+    "blob-hot-lrs-capacity",
+    "eh-standard-ingress-events",
+    "eh-standard-tu"
+  ],
+  "capabilities": {
+    "discovery": {
+      "availability": "not-deployed",
+      "billableMeters": [],
+      "reason": "Module file is empty (azure/data/DISCOVERY-assets_discovery.tf) — deploys nothing."
+    },
+    "audit_logs": {
+      "availability": "deployed",
+      "billableMeters": [
+        "blob-hot-lrs-capacity",
+        "eh-standard-ingress-events",
+        "eh-standard-tu"
+      ],
+      "reason": "Deployed by AUDIT_LOGS-audit_common_resources, AUDIT_LOGS-audit_organization."
+    },
+    "ads_cloud": {
+      "availability": "no-connector-tf",
+      "billableMeters": [],
+      "reason": "No module in the connector Terraform implements this capability."
+    },
+    "ads_outpost": {
+      "availability": "no-connector-tf",
+      "billableMeters": [],
+      "reason": "No module in the connector Terraform implements this capability."
+    },
+    "dspm": {
+      "availability": "no-connector-tf",
+      "billableMeters": [],
+      "reason": "No module in the connector Terraform implements this capability."
+    },
+    "registry": {
+      "availability": "no-connector-tf",
+      "billableMeters": [],
+      "reason": "No module in the connector Terraform implements this capability."
+    },
+    "serverless": {
+      "availability": "no-connector-tf",
+      "billableMeters": [],
+      "reason": "No module in the connector Terraform implements this capability."
+    },
+    "egress": {
+      "availability": "no-connector-tf",
+      "billableMeters": [],
+      "reason": "No module in the connector Terraform implements this capability."
+    }
+  }
+}

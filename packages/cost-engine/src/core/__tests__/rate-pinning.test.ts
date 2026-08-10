@@ -24,6 +24,13 @@ const inputs: EstimateInputs = {
   volume: { accountCount: 10 },
 };
 
+/**
+ * Pinned clock. These fixtures freeze rate cards captured on fixed dates, so
+ * without an explicit `now` the freshness gate compares them against the real
+ * wall clock and the suite starts failing 30 days after the fixture date.
+ */
+const NOW = new Date("2026-07-05T00:00:00.000Z");
+
 const rateCard: RateCard = {
   provider: "azure",
   region: "eastus",
@@ -54,6 +61,7 @@ describe("package 13 — REQ freeze export fields", () => {
       },
       rateCard,
       inputs,
+      now: NOW,
     });
     expect(frozen.provider).toBe("azure");
     expect(frozen.modelVersion).toBe(modelVersion);
@@ -85,6 +93,7 @@ describe("package 13 — AC / TEST golden freeze → mutate → re-pin", () => {
       },
       rateCard,
       inputs,
+      now: NOW,
     });
 
     const json = JSON.stringify(frozen);
@@ -138,6 +147,7 @@ describe("package 13 — AC / TEST golden freeze → mutate → re-pin", () => {
         capturedAt: "2026-07-01T00:00:00.000Z",
       },
       inputs: { ...inputs, provider: "aws", region: "us-east-1" },
+      now: NOW,
     });
     expect(() => validateExportSchema(frozen)).not.toThrow();
     expect(frozen.provider).toBe("aws");
@@ -220,6 +230,7 @@ describe("package 13 — EDGE", () => {
       rateCard,
       inputs,
       modelVersion: "0.0.1",
+      now: NOW,
     });
     const loaded = loadFrozenEstimate(JSON.stringify(frozen), {
       currentModelVersion: "0.1.0",

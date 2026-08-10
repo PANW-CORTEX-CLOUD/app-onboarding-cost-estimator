@@ -47,12 +47,31 @@ export interface RateCard {
   capturedAt: string;
 }
 
+/**
+ * Provenance for the rate behind one line item: whether the number was last
+ * seen in the vendor's own price list, and how long ago. Provider-agnostic on
+ * purpose — the ledger that produces it lives under providers/.
+ */
+export interface LineItemVerification {
+  verdict: "verified" | "mismatch" | "unsupported-meter" | "proxy" | "unverified";
+  /** ISO date of the last comparison against the official source; null = never. */
+  verifiedAt: string | null;
+  ageDays: number;
+  /** Past its re-check window. */
+  stale: boolean;
+  /** Safe to present as a vendor-published price. */
+  trusted: boolean;
+  sourceUrl: string;
+}
+
 export interface LineItem {
   provider: CloudProvider;
   capability: string;
   meterId: string;
   amount: number;
   confidence: Confidence;
+  /** Rate provenance (createEstimate attaches this; sub-estimators do not). */
+  verification?: LineItemVerification;
 }
 
 export interface EstimateResult {

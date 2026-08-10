@@ -17,7 +17,7 @@ import {
   estimateExportFields,
 } from "../core/rate-pinning.ts";
 import { resolveVolumeSignals } from "../core/volume-signals.ts";
-import { getRates } from "./rates/get-rates.ts";
+import { getRates, type GetRatesOptions } from "./rates/get-rates.ts";
 import { estimateAuditStream } from "./streams/estimate-audit-stream.ts";
 import { estimateAuditStorage } from "./storage/estimate-audit-storage.ts";
 import { estimateAds } from "./ads/estimate-ads.ts";
@@ -29,6 +29,16 @@ import {
 import { estimateEgress } from "./egress/estimate-egress.ts";
 import { bandFromExpected } from "./dspm/dspm.types.ts";
 import { appendTfHonestyWarnings } from "./tf-honesty-warnings.ts";
+import {
+  DEFAULT_TF_MODE,
+  gateCapabilitiesByTf,
+  type TfMode,
+} from "./tf/tf-feature-manifest.ts";
+import {
+  confidenceForVerification,
+  verificationWarnings,
+  verifyMeter,
+} from "./rates/price-validation.ts";
 
 export type CreateEstimateRequest = {
   provider: CloudProvider;
@@ -70,6 +80,20 @@ export type CreateEstimateRequest = {
     assumedEventBytes?: number;
   };
   monthHours?: number;
+  /**
+   * `as-deployed` prices only what the connector Terraform will actually
+   * create, so the total is comparable to the customer's first invoice.
+   * `what-if` (default) also prices capabilities with no connector TF.
+   */
+  tfMode?: TfMode;
+  /** Injected clock for deterministic rate-provenance ages in tests. */
+  now?: Date;
+  /**
+   * Rate-resolution seam — inject adapters or a cache to estimate without
+   * touching the network (offline mode, reproducible exports, tests).
+   * Omitted, rates resolve live → 24h cache → in-repo fallback as before.
+   */
+  ratesOptions?: GetRatesOptions;
 };
 
 export type CreateEstimateResponse = EstimateResult & {
@@ -83,6 +107,10 @@ export type CreateEstimateResponse = EstimateResult & {
     peakEventsPerSec: number;
     overrideStreamMetrics: boolean;
   };
+  /** Which TF grounding rule produced this number. */
+  tfMode: TfMode;
+  /** Capabilities dropped because the Terraform will not deploy them. */
+  excludedCapabilities: Array<{ capability: string; reason: string }>;
 };
 
 function worstConfidence(items: LineItem[]): Confidence {
@@ -103,16 +131,27 @@ export async function createEstimate(
   if (monthHours <= 0) {
     throw new Error(`monthHours must be > 0, got ${monthHours}`);
   }
-  const caps = req.capabilities ?? {};
+  const requestedCaps = req.capabilities ?? {};
   const vol = req.volume ?? {};
   const warnings: string[] = [];
+  const now = req.now ?? new Date();
+  const tfMode = req.tfMode ?? DEFAULT_TF_MODE;
+
+  // Gate before any pricing happens: in as-deployed mode a capability the
+  // Terraform will not create must never reach an estimator.
+  const gate = gateCapabilitiesByTf(provider, requestedCaps, tfMode);
+  const caps = gate.effective;
+  warnings.push(...gate.warnings);
   if (vol.assumedEventBytes !== undefined && vol.assumedEventBytes <= 0) {
     throw new Error(
       `assumedEventBytes must be > 0, got ${vol.assumedEventBytes}`,
     );
   }
 
-  const ratesResult = await getRates(provider, region);
+  const ratesResult = await getRates(provider, region, {
+    now,
+    ...(req.ratesOptions ?? {}),
+  });
   warnings.push(...ratesResult.warnings);
   const rates: RateCard = ratesResult.rates;
   if (rates.provider !== provider) {
@@ -280,6 +319,25 @@ export async function createEstimate(
   // Honesty: Azure TF bills audit only; AWS/GCP have no connector TF inventory.
   appendTfHonestyWarnings(provider, caps, warnings);
 
+  // Rate provenance: stamp every line with when its price was last seen in the
+  // vendor's own price list, and refuse to call a line High confidence when the
+  // number behind it is not vendor-backed.
+  const verifiedLineItems: LineItem[] = lineItems.map((item) => {
+    const verification = verifyMeter(item.meterId, undefined, now);
+    return {
+      ...item,
+      confidence: confidenceForVerification(item.confidence, verification),
+      verification,
+    };
+  });
+  warnings.push(
+    ...verificationWarnings(
+      verifiedLineItems.map((i) => i.meterId),
+      undefined,
+      now,
+    ),
+  );
+
   const estimateInputs: EstimateInputs = {
     provider,
     region,
@@ -297,16 +355,16 @@ export async function createEstimate(
   };
 
   const meta = estimateExportFields(provider, rates, estimateInputs);
-  const expected = lineItems.reduce((s, i) => s + i.amount, 0);
+  const expected = verifiedLineItems.reduce((s, i) => s + i.amount, 0);
   const confidence =
-    lineItems.length === 0 ? "High" : worstConfidence(lineItems);
+    verifiedLineItems.length === 0 ? "High" : worstConfidence(verifiedLineItems);
   // AC (pkg 19): Low-confidence capabilities expose low/expected/high bands.
   const totals =
     confidence === "Low" ? bandFromExpected(expected) : { expected };
 
   return {
     provider,
-    lineItems,
+    lineItems: verifiedLineItems,
     totals,
     confidence,
     modelVersion: meta.modelVersion ?? modelVersion,
@@ -320,5 +378,7 @@ export async function createEstimate(
       peakEventsPerSec: resolvedVol.peakEventsPerSec,
       overrideStreamMetrics,
     },
+    tfMode,
+    excludedCapabilities: gate.excluded,
   };
 }

@@ -22,6 +22,12 @@ const baseRates: RateCard = {
   capturedAt: "2026-07-01T00:00:00.000Z",
 };
 
+/**
+ * Pinned clock — the rate card below is captured on a fixed date, so leaving
+ * `now` to the wall clock makes this test expire 30 days after that date.
+ */
+const NOW = new Date("2026-07-05T00:00:00.000Z");
+
 const streamInputs = {
   enabled: true,
   region: "eastus",
@@ -47,6 +53,7 @@ describe("package 13 — TEST golden stream freeze", () => {
         confidence: first.confidence,
       },
       rateCard: baseRates,
+      now: NOW,
       inputs: estimateInputs,
     });
 

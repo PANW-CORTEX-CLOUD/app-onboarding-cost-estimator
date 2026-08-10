@@ -52,7 +52,7 @@ export function CostBreakdown({
     rowsProp ??
     (capabilities
       ? buildBreakdownRows(estimate, capabilities, warnings)
-      : estimate.lineItems.map((li) => ({
+      : estimate.lineItems.map<BreakdownRow>((li) => ({
           capability: li.capability,
           meterId: li.meterId,
           amount: li.amount,

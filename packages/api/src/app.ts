@@ -217,6 +217,8 @@ export function createApp(): Hono {
         inputHash: estimate.inputHash,
         ratesSource: estimate.ratesSource,
         warnings: estimate.warnings,
+        tfMode: estimate.tfMode,
+        excludedCapabilities: estimate.excludedCapabilities,
         resolvedVolume: estimate.resolvedVolume,
       });
     } catch (e) {
