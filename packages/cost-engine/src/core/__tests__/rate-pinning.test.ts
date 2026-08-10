@@ -35,6 +35,16 @@ const rateCard: RateCard = {
   capturedAt: "2026-07-01T00:00:00.000Z",
 };
 
+/**
+ * Fixed clock for freeze tests. `freezeEstimate` fails closed when rates are
+ * critically stale (see core/rates/age-days.ts STALE_DAYS_CRITICAL); pinning `now`
+ * near the fixture `capturedAt` keeps these tests deterministic regardless of the
+ * real wall-clock date the suite happens to run on (bug: previously these tests
+ * used the real `new Date()` default and would start failing ~30 days after the
+ * hardcoded capturedAt values, independent of any actual regression).
+ */
+const FIXTURE_NOW = new Date("2026-07-01T12:00:00.000Z");
+
 describe("package 13 — REQ freeze export fields", () => {
   it("exports provider, modelVersion, ratesAsOf, inputHash", () => {
     const frozen = freezeEstimate({
@@ -54,6 +64,7 @@ describe("package 13 — REQ freeze export fields", () => {
       },
       rateCard,
       inputs,
+      now: FIXTURE_NOW,
     });
     expect(frozen.provider).toBe("azure");
     expect(frozen.modelVersion).toBe(modelVersion);
@@ -85,6 +96,7 @@ describe("package 13 — AC / TEST golden freeze → mutate → re-pin", () => {
       },
       rateCard,
       inputs,
+      now: FIXTURE_NOW,
     });
 
     const json = JSON.stringify(frozen);
@@ -138,6 +150,7 @@ describe("package 13 — AC / TEST golden freeze → mutate → re-pin", () => {
         capturedAt: "2026-07-01T00:00:00.000Z",
       },
       inputs: { ...inputs, provider: "aws", region: "us-east-1" },
+      now: FIXTURE_NOW,
     });
     expect(() => validateExportSchema(frozen)).not.toThrow();
     expect(frozen.provider).toBe("aws");
@@ -220,6 +233,7 @@ describe("package 13 — EDGE", () => {
       rateCard,
       inputs,
       modelVersion: "0.0.1",
+      now: FIXTURE_NOW,
     });
     const loaded = loadFrozenEstimate(JSON.stringify(frozen), {
       currentModelVersion: "0.1.0",

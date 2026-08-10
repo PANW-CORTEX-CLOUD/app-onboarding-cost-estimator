@@ -24,11 +24,32 @@ import {
   type AuditStreamResult,
 } from "../streams/audit-stream.types.ts";
 
-/** GiB conversion from GB (approx binary; pricing pages use GiB). */
+/**
+ * Decimal GB → binary GiB. Pub/Sub throughput and storage SKUs are both
+ * denominated in GiB (2^30 bytes), while our volume inputs are decimal GB
+ * (10^9 bytes) — 1 GB = (1000^3 / 1024^3) GiB ≈ 0.9313 GiB.
+ * @see https://cloud.google.com/pubsub/pricing
+ */
 export function gbToGib(gb: number): number {
   return gb * (1000 ** 3 / 1024 ** 3);
 }
 
+/**
+ * GCP Pub/Sub audit-stream monthly cost.
+ *
+ * Bills the two separate Pub/Sub meters (never conflated into one line):
+ * - `pubsub-message-delivery`: monthly ingress GB → GiB × $/GiB (throughput).
+ * - `pubsub-storage`: steady-state retained volume (dailyIngressGB × retentionDays)
+ *   → GiB × $/GiB-month (message storage/retention).
+ * Free tiers (10 GiB/month delivery, first 24h storage) are intentionally not
+ * modeled — conservative estimate, consistent with the rest of this engine.
+ *
+ * @param inputs Audit stream volume/config. `enabled=false` → $0 (TEST).
+ * @param rates GCP RateCard; must carry `pubsub-message-delivery` and `pubsub-storage`.
+ * @returns Line items for both meters plus reporting fields (provisioned units,
+ *   retention overage) — none of the reporting fields feed back into billing.
+ * @see https://cloud.google.com/pubsub/pricing
+ */
 export function estimateGcpAuditStream(
   inputs: AuditStreamInputs,
   rates: RateCard,
@@ -64,6 +85,17 @@ export function estimateGcpAuditStream(
     resolveMonthHours({ convention: "730" }).monthHours ??
     DEFAULT_MONTH_HOURS;
   const retentionDays = resolved.retentionDays ?? DEFAULT_RETENTION_DAYS;
+
+  // EDGE: negative ingress/retention would flow through gbToGib into a negative
+  // deliveryAmount/storageAmount — a customer-facing estimate must never go negative.
+  if (!Number.isFinite(resolved.ingressGBPerDay) || resolved.ingressGBPerDay < 0) {
+    throw new Error(
+      `ingressGBPerDay must be non-negative, got ${resolved.ingressGBPerDay}`,
+    );
+  }
+  if (!Number.isFinite(retentionDays) || retentionDays < 0) {
+    throw new Error(`retentionDays must be non-negative, got ${retentionDays}`);
+  }
 
   const peak = applyPeakFactor({
     averageVolume: Math.max(resolved.peakMBps, 0.001),

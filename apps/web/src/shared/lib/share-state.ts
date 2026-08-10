@@ -58,6 +58,11 @@ export function assertNoSecretsInShare(raw: string): void {
   }
 }
 
+/**
+ * JSON-encode then URL-safe base64 (`+`/`/` → `-`/`_`, no `=` padding) a share state.
+ * @param state Share payload (no secrets — enforced by {@link assertNoSecretsInShare}).
+ * @returns URL-safe base64 string suitable for a query param value.
+ */
 export function serializeShareState(state: ShareState): string {
   const json = JSON.stringify(state);
   assertNoSecretsInShare(json);
@@ -69,6 +74,13 @@ export function serializeShareState(state: ShareState): string {
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/**
+ * Inverse of {@link serializeShareState}: restores base64 alphabet/padding
+ * (`padded.length % 4` determines how many `=` were stripped), decodes, and
+ * validates required fields (`v`, `provider`, `region`) and provider enum.
+ * @param encoded URL-safe base64 string, e.g. from the `?s=` query param.
+ * @returns `{ ok: true, state }` on success, or `{ ok: false, error }` for malformed/foreign payloads.
+ */
 export function deserializeShareState(encoded: string): ShareParseResult {
   try {
     assertNoSecretsInShare(encoded);
@@ -95,6 +107,14 @@ export function deserializeShareState(encoded: string): ShareParseResult {
   }
 }
 
+/**
+ * Build a shareable URL for `state`, falling back to a JSON export when the
+ * full URL (including the `s` and `provider` params) exceeds
+ * {@link MAX_SHARE_URL_CHARS}. Length is measured on the final `href`, not the
+ * encoded payload alone, so it accounts for `baseHref`'s own length too.
+ * @returns `{ ok: true, url }`, or `{ ok: false, reason: "oversized", json }` with a
+ *   pretty-printed JSON fallback the caller can offer for manual copy/paste.
+ */
 export function buildShareUrl(
   state: ShareState,
   baseHref = typeof window !== "undefined" ? window.location.href : "http://localhost/",
@@ -119,7 +139,14 @@ export function readShareFromSearch(
   return deserializeShareState(raw);
 }
 
-/** Absolute and % delta: (b - a) and ((b-a)/a)*100 when a≠0. */
+/**
+ * Absolute and percent delta of `b` relative to `a` (the baseline/first column
+ * in a scenario compare): `absolute = b - a`, `percent = (b - a) / a * 100`.
+ * `percent` is `null` when `a === 0` (would divide by zero) — callers should
+ * render that as "—", not "0%" or "∞%".
+ * @param a Baseline value (e.g. the first compared scenario's expected cost).
+ * @param b Value being compared against the baseline.
+ */
 export function compareDelta(
   a: number,
   b: number,

@@ -23,6 +23,13 @@ export const AZURE_TF_DEFAULTS = {
   captureConfigured: false,
 } as const;
 
+/**
+ * Azure capability → permission → meter SSOT rows — must equal
+ * docs/CLOUD_COST_MODEL.md's "Azure capability → permission → meter" table
+ * 1:1 (enforced by snapshot test, see providers/__tests__/capability-meter-map.test.ts).
+ * `audit_logs` rows are the only ones grounded in real connector TF
+ * (see tf-audit-reconciliation.ts); everything else is modeled, no connector TF.
+ */
 export const azureCapabilityMeterMap: readonly CapabilityMeterRow[] = [
   {
     capability: "discovery",
@@ -126,6 +133,11 @@ export const azureCapabilityMeterMap: readonly CapabilityMeterRow[] = [
 export const AZURE_RETAIL_PRICES_API_URL =
   "https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices";
 
+/**
+ * @throws when any capability in `REQUIRED_CAPABILITIES` (core/meter-map.types.ts)
+ * has no row in `azureCapabilityMeterMap` — catches an accidental drop of an
+ * entire capability from the Azure research map (not a per-meter check).
+ */
 export function assertAzureMapCoversRequiredCapabilities(): void {
   const present = new Set(azureCapabilityMeterMap.map((r) => r.capability));
   for (const id of REQUIRED_CAPABILITIES) {

@@ -14,12 +14,32 @@ import {
   type AuditStorageResult,
 } from "../storage/audit-storage.types.ts";
 
+/** S3 Standard storage, billed per GB-month of average stored capacity. */
 export const AWS_AUDIT_CAPACITY_METER = "s3-standard-storage";
-export const AWS_AUDIT_WRITE_OPS_METER = "s3-put-10k";
-export const AWS_AUDIT_READ_OPS_METER = "s3-get-10k";
+/**
+ * S3 PUT/COPY/POST/LIST requests. AWS prices these **per 1,000 requests**
+ * (not per 10,000) — see `estimateAwsAuditStorage` for the divisor this feeds.
+ */
+export const AWS_AUDIT_WRITE_OPS_METER = "s3-put-1k";
+/** S3 GET/SELECT requests, also priced per 1,000 requests. */
+export const AWS_AUDIT_READ_OPS_METER = "s3-get-1k";
 
 export const AWS_ALLOWED_REDUNDANCY = ["STANDARD", "S3_STANDARD"] as const;
 
+/**
+ * S3 Standard audit-log storage: capacity (GB-month) + optional request ops.
+ *
+ * - capacityCost = avgGB × `s3-standard-storage` ($/GB-month), floored to
+ *   `DEFAULT_AUDIT_STORAGE_FLOOR_GB` when audit is enabled with avgGB unset/0.
+ * - writeAmount = (writeOpsPerMonth / 1,000) × `s3-put-1k` ($/1,000 PUT/COPY/POST/LIST requests).
+ * - readAmount = (readOpsPerMonth / 1,000) × `s3-get-1k` ($/1,000 GET/SELECT requests).
+ *
+ * @see https://aws.amazon.com/s3/pricing/ — "Requests & data retrievals" pricing is
+ *   quoted per 1,000 requests (PUT/COPY/POST/LIST vs. GET/SELECT tiers), not per 10,000.
+ * @param inputs Audit storage inputs; `enabled=false` short-circuits to a $0 result (TEST).
+ * @param rates AWS RateCard — must carry provider "aws" (throws otherwise).
+ * @returns Line items (capacity + any non-zero ops) and totals.
+ */
 export function estimateAwsAuditStorage(
   inputs: AuditStorageInputs,
   rates: RateCard,
@@ -72,7 +92,9 @@ export function estimateAwsAuditStorage(
 
   if (writeOps > 0) {
     const writeRate = requireRate(rates.unitPrices, AWS_AUDIT_WRITE_OPS_METER);
-    const writeAmount = (writeOps / 10_000) * writeRate;
+    // EDGE: S3 request pricing is $/1,000 requests, not $/10,000 — dividing by
+    // 10,000 here would silently under-bill PUT/COPY/POST/LIST ops by 10x.
+    const writeAmount = (writeOps / 1_000) * writeRate;
     opsCost += writeAmount;
     lineItems.push({
       provider: "aws",
@@ -84,7 +106,7 @@ export function estimateAwsAuditStorage(
   }
   if (readOps > 0) {
     const readRate = requireRate(rates.unitPrices, AWS_AUDIT_READ_OPS_METER);
-    const readAmount = (readOps / 10_000) * readRate;
+    const readAmount = (readOps / 1_000) * readRate;
     opsCost += readAmount;
     lineItems.push({
       provider: "aws",

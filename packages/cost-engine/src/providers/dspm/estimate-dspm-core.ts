@@ -27,6 +27,21 @@ export type DspmMeterIds = {
   govCloudFailClosed: boolean;
 };
 
+/**
+ * DSPM monthly band estimate for one provider — always Low confidence.
+ *
+ * `expected = scannedGbFromInputs(inputs) × dataReadRate` (@see scannedGbFromInputs)
+ * `+ ephemeralHoursPerScan × scansPerMonth × ephemeralRate` when `includeEphemeralInfra` is set.
+ * Returned as a `{low, expected, high}` band via `bandFromExpected` — never a bare point.
+ *
+ * @param meters.govCloudFailClosed When true, Government/restricted regions throw
+ * instead of estimating (Azure: DSPM is N/A per Cortex). AWS/GCP pass false and
+ * instead warn + still estimate at Low confidence.
+ * @returns Empty $0 result when `inputs.enabled` is false.
+ * @throws when `rates.provider` doesn't match `provider`; when Gov region and
+ * `govCloudFailClosed`; when discovery telemetry is empty and dataEstateGB≤0
+ * (refuse silent precision); or when a required meter price is missing.
+ */
 export function estimateDspmForProvider(
   provider: CloudProvider,
   meters: DspmMeterIds,

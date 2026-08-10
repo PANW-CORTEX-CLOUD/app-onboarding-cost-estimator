@@ -7,6 +7,11 @@ import { estimateAwsAds } from "../aws/aws-ads-estimator.ts";
 import { estimateGcpAds } from "../gcp/gcp-ads-estimator.ts";
 import type { AdsInputs, AdsResult } from "./ads.types.ts";
 
+/**
+ * Route to the per-provider ADS estimator (Azure/AWS/GCP); each wraps the
+ * shared formula in `estimate-ads-core.ts` with its own meter ids.
+ * @throws when `rates.provider` doesn't match `provider`.
+ */
 export function estimateAds(
   provider: CloudProvider,
   inputs: AdsInputs,

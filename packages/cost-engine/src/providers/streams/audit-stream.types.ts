@@ -64,6 +64,10 @@ export const ORG_STREAM_PRESETS: Record<
   large: { ingressGBPerDay: 100, peakMBps: 10, peakEventsPerSec: 10_000 },
 };
 
+/**
+ * Overlay `ORG_STREAM_PRESETS[inputs.orgPreset]` onto ingress/peak fields.
+ * No-op (returns `inputs` unchanged) when `orgPreset` is unset.
+ */
 export function applyOrgPreset(
   inputs: AuditStreamInputs,
 ): AuditStreamInputs {
@@ -82,6 +86,11 @@ export const DEFAULT_RETENTION_DAYS = 7;
 /** Rough average event size for GB→events conversion when eps not used for volume. */
 export const ASSUMED_EVENT_BYTES = 1024;
 
+/**
+ * GB/day → GB/month: `ingressGBPerDay × (monthHours / 24)`.
+ * `monthHours` is the *billing month* length (locked default 730 = 30.4167 days),
+ * not a calendar day count — do not substitute a fixed 30 or 31.
+ */
 export function monthlyIngressGb(
   ingressGBPerDay: number,
   monthHours: number,
@@ -90,11 +99,21 @@ export function monthlyIngressGb(
   return ingressGBPerDay * days;
 }
 
+/**
+ * GB → millions of events, via `gb × 1024³ bytes/GB ÷ eventBytes ÷ 1e6`.
+ * Used to convert stream ingress volume into ingress-event-denominated meters
+ * (e.g. Azure EH Ingress Events) when only a GB/day volume signal is known.
+ * @param eventBytes Assumed average event size; default `ASSUMED_EVENT_BYTES` (1024).
+ */
 export function gbToMillionEvents(gb: number, eventBytes = ASSUMED_EVENT_BYTES): number {
   const events = (gb * 1024 ** 3) / eventBytes;
   return events / 1_000_000;
 }
 
+/**
+ * Look up a meter's unit price, failing closed instead of defaulting to $0.
+ * @throws when `meterId` is absent from `unitPrices`.
+ */
 export function requireRate(
   unitPrices: Record<string, number>,
   meterId: string,
@@ -106,6 +125,7 @@ export function requireRate(
   return p;
 }
 
+/** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */
 export function sumAmounts(items: LineItem[]): number {
   return items.reduce((s, i) => s + i.amount, 0);
 }

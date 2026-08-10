@@ -58,6 +58,11 @@ export const GCP_GOV_EGRESS_ZONES: readonly EgressZoneCard[] = [
   { zone: "same-region", rateMultiplier: 0, label: "Same-region" },
 ] as const;
 
+/**
+ * Case/whitespace-insensitive lookup of a zone card by key.
+ * @returns `undefined` when unrecognized — caller must exclude + warn, never
+ * default to a fabricated rate (fail closed; @see estimate-egress-core.ts).
+ */
 export function lookupEgressZone(
   cards: readonly EgressZoneCard[],
   destinationZone: string,

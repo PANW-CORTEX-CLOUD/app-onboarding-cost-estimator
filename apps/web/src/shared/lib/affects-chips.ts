@@ -73,6 +73,12 @@ function usd(n: number): string {
 /**
  * Build chips for one field from estimate line items.
  * EDGE: omit meters not present; omit zero-amount lines; never invent $0 meters.
+ * No aggregation/percent math — each chip shows a meter's raw line-item `amount`
+ * as-is; `wanted` meter order (not a sort) determines chip order.
+ * @param provider Selected cloud provider — selects the field→meterId table.
+ * @param lineItems Current estimate's line items (or `null`/`undefined` before a run).
+ * @param fieldId Volume input field to look up affected meters for.
+ * @returns Chips for meters present on the estimate with `amount > 0`, in table order.
  */
 export function buildAffectsChips(
   provider: CloudProvider,
@@ -98,7 +104,7 @@ export function buildAffectsChips(
   return chips;
 }
 
-/** All audit-related fields → chips map for forms. */
+/** All audit-related fields → chips map for forms; fields with no chips are omitted (not `[]`). */
 export function buildAffectsByField(
   provider: CloudProvider,
   lineItems: LineLike[] | null | undefined,

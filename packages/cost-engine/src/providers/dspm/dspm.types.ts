@@ -50,6 +50,10 @@ export const DSPM_BAND_HIGH_FACTOR = 2.0;
 
 export const DEFAULT_EPHEMERAL_HOURS_PER_SCAN = 1;
 
+/**
+ * Look up a meter's unit price, failing closed instead of defaulting to $0.
+ * @throws when `meterId` is absent from `unitPrices`.
+ */
 export function requireRate(
   unitPrices: Record<string, number>,
   meterId: string,
@@ -61,6 +65,12 @@ export function requireRate(
   return p;
 }
 
+/**
+ * Monthly data volume scanned: `dataEstateGB × (pctScanned / 100) × scansPerMonth`.
+ * Linear in all three inputs — re-scanning the same estate N times per month
+ * bills N times (v1 does not dedupe/cache prior scan coverage).
+ * @throws when dataEstateGB/scansPerMonth is negative or pctScanned is outside 0–100.
+ */
 export function scannedGbFromInputs(inputs: DspmInputs): number {
   if (inputs.dataEstateGB < 0 || inputs.scansPerMonth < 0) {
     throw new Error("DSPM numeric inputs must be non-negative");
@@ -71,6 +81,10 @@ export function scannedGbFromInputs(inputs: DspmInputs): number {
   return inputs.dataEstateGB * (inputs.pctScanned / 100) * inputs.scansPerMonth;
 }
 
+/**
+ * Expand a Low-confidence point estimate into a low/expected/high band —
+ * `low = expected × 0.5`, `high = expected × 2.0` (never a false-precise point, @see CLOUD_COST_MODEL.md confidence policy).
+ */
 export function bandFromExpected(expected: number): DspmBand {
   return {
     low: expected * DSPM_BAND_LOW_FACTOR,

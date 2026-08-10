@@ -21,6 +21,10 @@ import type {
   ServerlessScanInputs,
 } from "./scan.types.ts";
 
+/**
+ * Route to the per-provider registry-scan estimator (ACR/ECR/Artifact Registry);
+ * each wraps the shared formula in `estimate-scan-core.ts` with its own meter id.
+ */
 export function estimateRegistryScan(
   provider: CloudProvider,
   inputs: RegistryScanInputs,
@@ -40,6 +44,10 @@ export function estimateRegistryScan(
   }
 }
 
+/**
+ * Route to the per-provider serverless-scan estimator (Functions/Lambda/Cloud Run);
+ * each wraps the shared formula in `estimate-scan-core.ts` with its own meter id.
+ */
 export function estimateServerlessScan(
   provider: CloudProvider,
   inputs: ServerlessScanInputs,

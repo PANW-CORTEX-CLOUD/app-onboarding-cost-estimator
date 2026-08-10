@@ -2,6 +2,10 @@
  * Azure Blob Hot LRS audit-storage estimator (package 07).
  * Grounded in azure/data TF: Standard + LRS. No lifecycle auto-delete assumed.
  *
+ * `avgGB` is a Blob-pricing-native unit: Azure Storage defines "GB" as GiB
+ * (2^30 bytes) for capacity billing, not the decimal GB used elsewhere —
+ * pass values already in that convention, no conversion applied here.
+ *
  * @see https://azure.microsoft.com/en-us/pricing/details/storage/blobs/
  */
 import type { RateCard, LineItem } from "../../core/models/estimate.types.ts";
@@ -22,6 +26,29 @@ export const AZURE_AUDIT_READ_OPS_METER = "blob-hot-lrs-read-10k";
 
 export const AZURE_ALLOWED_REDUNDANCY = ["LRS"] as const;
 
+/**
+ * Estimate Azure Blob Storage Standard Hot LRS monthly audit-storage costs.
+ *
+ * Three independently-billed line items, capacity always present, ops only
+ * when their respective volume is > 0 (never invented at $0):
+ * - `blob-hot-lrs-capacity`: `capacityGb × $/GB-month` (capacityGb floors to
+ *   `DEFAULT_AUDIT_STORAGE_FLOOR_GB` when audit is on but `avgGB` is unset/0 —
+ *   see `resolveCapacityGb`).
+ * - `blob-hot-lrs-write-10k` / `blob-hot-lrs-read-10k`: `(ops / 10,000) × $/10k-ops`
+ *   — Azure bills Blob operations per 10,000-transaction batch, so the raw op
+ *   count must be divided by 10,000 before multiplying by the list rate (never
+ *   `ops × rate` directly).
+ *
+ * Redundancy is fail-closed to `AZURE_ALLOWED_REDUNDANCY` (LRS, matching TF
+ * `account_replication_type`) — GRS/ZRS/other throws rather than silently
+ * pricing at the LRS rate (@see assertAllowedRedundancy).
+ *
+ * @param inputs Audit storage inputs; `enabled=false` short-circuits to a $0 result (TEST).
+ * @param rates Azure RateCard — must carry provider "azure" (throws otherwise); requires
+ *   `blob-hot-lrs-capacity` always, and the matching ops meter when that ops count > 0.
+ * @returns Line items (capacity + optional ops), totals, and capacity/cost signals.
+ * @see https://azure.microsoft.com/en-us/pricing/details/storage/blobs/
+ */
 export function estimateAzureAuditStorage(
   inputs: AuditStorageInputs,
   rates: RateCard,

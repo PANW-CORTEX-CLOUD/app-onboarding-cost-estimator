@@ -44,6 +44,10 @@ export type AdsResult = {
 
 export const DEFAULT_OUTPOST_HOURS_PER_SCAN = 2;
 
+/**
+ * Look up a meter's unit price, failing closed instead of defaulting to $0.
+ * @throws when `meterId` is absent from `unitPrices`.
+ */
 export function requireRate(
   unitPrices: Record<string, number>,
   meterId: string,
@@ -55,6 +59,7 @@ export function requireRate(
   return p;
 }
 
+/** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */
 export function sumAmounts(items: LineItem[]): number {
   return items.reduce((s, i) => s + i.amount, 0);
 }
@@ -73,7 +78,21 @@ export function isGovCloudRegion(region: string): boolean {
 
 /**
  * Total snapshot GB-months from used-size × scans, prorated by lifetime/monthHours.
- * v1 conservative: full used size per scan (no incremental discount).
+ *
+ * `gbMonths = vmCount × avgUsedDiskGB × scansPerMonth × (snapshotLifetimeHours / monthHours)`
+ *
+ * Each scan is billed as its own full-size snapshot for its retention window —
+ * successive scans are additive, not overlapping/deduped (v1 conservative:
+ * full used size per scan, no incremental discount).
+ * @see prorateSnapshotCost in core/hours.ts — same proration applied per-scan
+ * before multiplying by vmCount × scansPerMonth in estimate-ads-core.ts.
+ * @param opts.vmCount Number of VMs scanned (non-negative).
+ * @param opts.avgUsedDiskGB Average used (not provisioned) disk size, GB.
+ * @param opts.scansPerMonth Scan cycles per month.
+ * @param opts.snapshotLifetimeHours Retention window per snapshot, hours.
+ * @param opts.monthHours Hours in the billing month (locked default 730).
+ * @returns GB-months of snapshot capacity for the whole fleet in one month.
+ * @throws when vmCount, avgUsedDiskGB, or scansPerMonth is negative.
  */
 export function snapshotGbMonthsUsedSize(opts: {
   vmCount: number;
@@ -96,6 +115,11 @@ export function snapshotGbMonthsUsedSize(opts: {
   return rawGb * (snapshotLifetimeHours / monthHours);
 }
 
+/**
+ * Non-fatal EDGE warnings for ADS inputs (zero VMs while enabled, provisioned
+ * disk far above used disk, or a requested incremental model that v1 still
+ * bills as full used-size). Does not affect cost — advisory only.
+ */
 export function collectAdsEdgeWarnings(inputs: AdsInputs): string[] {
   const warnings: string[] = [];
   if (inputs.enabled && inputs.vmCount === 0) {

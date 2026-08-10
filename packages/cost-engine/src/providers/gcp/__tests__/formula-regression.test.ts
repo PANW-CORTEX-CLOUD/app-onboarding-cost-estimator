@@ -104,4 +104,24 @@ describe("package 14 — GCP formula regression", () => {
       gbMonths * GOLDEN_GCP_RATES.unitPrices["pd-snapshot-storage"]!,
     );
   });
+
+  it("EDGE: negative ingress/retention fail closed instead of billing a negative amount", () => {
+    expect(() =>
+      estimateGcpAuditStream(
+        { ...GOLDEN_STREAM_INPUTS, region: "us-central1", ingressGBPerDay: -5 },
+        GOLDEN_GCP_RATES,
+      ),
+    ).toThrow(/ingressGBPerDay must be non-negative/);
+
+    expect(() =>
+      estimateGcpAuditStream(
+        {
+          ...GOLDEN_STREAM_INPUTS,
+          region: "us-central1",
+          retentionDays: -1,
+        },
+        GOLDEN_GCP_RATES,
+      ),
+    ).toThrow(/retentionDays must be non-negative/);
+  });
 });

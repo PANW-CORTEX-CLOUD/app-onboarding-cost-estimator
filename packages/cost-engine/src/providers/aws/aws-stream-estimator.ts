@@ -26,11 +26,30 @@ import {
   type AuditStreamResult,
 } from "../streams/audit-stream.types.ts";
 
+/** Ingress throughput per shard — AWS: "1 MB/sec ingest per shard." */
 export const AWS_KINESIS_MBPS_PER_SHARD = 1;
+/** Record-rate limit per shard — AWS: "1,000 records/sec per shard" (binds independently of MB/s). */
 export const AWS_KINESIS_EPS_PER_SHARD = 1000;
+/** PUT Payload Unit chunk size — AWS bills each record rounded up to the nearest 25 KB. */
 export const AWS_KINESIS_PUT_PAYLOAD_KB = 25;
+/** Modeled floor: at least 1 shard is provisioned whenever audit streaming is enabled. */
 export const AWS_KINESIS_MIN_SHARDS = 1;
 
+/**
+ * Provisioned-mode shard count for a given peak throughput.
+ *
+ * Kinesis shard capacity is bound by **two independent limits** — 1 MB/s ingest
+ * and 1,000 records/sec — so the shard count must satisfy whichever limit is
+ * more restrictive (`Math.max` of the two `Math.ceil` sizings), never just one.
+ *
+ * @param opts.peakMBps Peak ingress MB/s (pre-peakFactor).
+ * @param opts.peakEventsPerSec Peak records/sec (pre-peakFactor).
+ * @param opts.peakFactor Throughput sizing multiplier (>=1, default 1) — scales
+ *   the capacity recommendation only, never the average billed volume.
+ * @returns Shard count, floored at `AWS_KINESIS_MIN_SHARDS`.
+ * @see https://aws.amazon.com/kinesis/data-streams/pricing/ — "one shard provides
+ *   an ingest capacity of 1 MB/second or 1,000 records/second"
+ */
 export function sizeKinesisShards(opts: {
   peakMBps: number;
   peakEventsPerSec: number;
@@ -47,7 +66,22 @@ export function sizeKinesisShards(opts: {
   return Math.max(byMbps, byEps, AWS_KINESIS_MIN_SHARDS);
 }
 
-/** PUT payload units from monthly ingress GB (25 KB units). */
+/**
+ * PUT payload units for a month of ingress.
+ *
+ * Formula: `(monthlyIngressGb × 1024²) / 25` — total ingress bytes (GB treated
+ * as GiB, matching this codebase's GB→bytes convention elsewhere, e.g.
+ * `gbToMillionEvents`) divided into 25 KB payload-unit chunks.
+ *
+ * @remarks AWS actually meters PUT Payload Units **per record**, rounded up to
+ * the nearest 25 KB chunk (a 1 KB record still costs 1 full unit). This
+ * aggregate byte-total division approximates that and can under-count when the
+ * average record is small relative to 25 KB — the model has no per-record size
+ * input to do the per-record rounding exactly (v1 known limitation).
+ * @param monthlyIngressGb Total ingress for the month, in GB (GiB convention).
+ * @see https://aws.amazon.com/kinesis/data-streams/pricing/ — "A PUT Payload
+ *   Unit is counted in 25 KB payload 'chunks' that comprise a record."
+ */
 export function kinesisPutPayloadUnits(monthlyIngressGb: number): number {
   const kb = monthlyIngressGb * 1024 * 1024;
   return kb / AWS_KINESIS_PUT_PAYLOAD_KB;
@@ -56,11 +90,34 @@ export function kinesisPutPayloadUnits(monthlyIngressGb: number): number {
 /**
  * Convert raw PUT payload units to millions — rate cards store $/million
  * (same convention as Azure `eh-standard-ingress-events`).
+ * @see https://aws.amazon.com/kinesis/data-streams/pricing/ — PUT Payload Unit
+ *   list price is quoted per million units.
  */
 export function kinesisPutPayloadMillions(monthlyIngressGb: number): number {
   return kinesisPutPayloadUnits(monthlyIngressGb) / 1_000_000;
 }
 
+/**
+ * AWS Kinesis Data Streams audit-log stream estimate.
+ *
+ * Two billing dimensions, summed:
+ * 1. **Capacity**: `shards × kinesis-shard-hour × monthHours` (shard count from
+ *    {@link sizeKinesisShards}, zeroed when `byoManagedStream` is set).
+ * 2. **PUT payload**: `(monthlyIngressGb → payload units → millions) × kinesis-put-payload-units`
+ *    via {@link kinesisPutPayloadUnits} — the rate is a **per-million** list price,
+ *    so raw unit counts must never be multiplied by it directly (EDGE, regression-tested).
+ *
+ * Extended retention (beyond the 24h included window) is tracked only as an
+ * informational `retentionOverageGb` signal in the result — it is **not** billed
+ * as a line item in v1 (no `kinesis-extended-retention` meter is modeled; see
+ * `capability-meter-map.ts` for the AWS meter SSOT).
+ *
+ * @param inputs Audit stream inputs; `enabled=false` short-circuits to a $0 result (TEST).
+ * @param rates AWS RateCard — must carry provider "aws" (throws otherwise); requires
+ *   `kinesis-shard-hour` and `kinesis-put-payload-units` (throws if missing, no invented $0).
+ * @returns Line items (shard-hour + PUT payload), totals, and capacity/ingress signals.
+ * @see https://aws.amazon.com/kinesis/data-streams/pricing/
+ */
 export function estimateAwsAuditStream(
   inputs: AuditStreamInputs,
   rates: RateCard,

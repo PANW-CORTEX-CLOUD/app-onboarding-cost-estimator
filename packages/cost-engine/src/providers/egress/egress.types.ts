@@ -46,6 +46,10 @@ export type EgressResult = {
   excludedUnknownZone: boolean;
 };
 
+/**
+ * Look up a meter's unit price, failing closed instead of defaulting to $0.
+ * @throws when `meterId` is absent from `unitPrices`.
+ */
 export function requireRate(
   unitPrices: Record<string, number>,
   meterId: string,
@@ -57,10 +61,17 @@ export function requireRate(
   return p;
 }
 
+/** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */
 export function sumAmounts(items: LineItem[]): number {
   return items.reduce((s, i) => s + i.amount, 0);
 }
 
+/**
+ * Resolve billed egress volume: explicit `egressGB` wins; otherwise falls
+ * back to `auditStreamIngressGBPerMonth` (audit stream's ingress volume,
+ * assumed egressed 1:1 to Cortex). Neither present → fail closed.
+ * @throws when `egressGB` is negative, or when both inputs are unset.
+ */
 export function resolveEgressGb(inputs: EgressInputs): number {
   if (inputs.egressGB !== undefined) {
     if (inputs.egressGB < 0) {

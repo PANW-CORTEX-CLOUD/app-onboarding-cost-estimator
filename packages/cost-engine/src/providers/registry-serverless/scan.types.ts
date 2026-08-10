@@ -34,6 +34,10 @@ export type ScanEstimateResult = {
   confidence: Confidence;
 };
 
+/**
+ * Look up a meter's unit price, failing closed instead of defaulting to $0.
+ * @throws when `meterId` is absent from `unitPrices`.
+ */
 export function requireRate(
   unitPrices: Record<string, number>,
   meterId: string,
@@ -45,11 +49,20 @@ export function requireRate(
   return p;
 }
 
+/** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */
 export function sumAmounts(items: LineItem[]): number {
   return items.reduce((s, i) => s + i.amount, 0);
 }
 
-/** Incremental pull volume (GB) for registry scans. */
+/**
+ * Incremental pull volume (GB) for registry scans:
+ * `imageCount × avgImageGB × scansPerMonth`.
+ * Each scan re-pulls every image at full size — v1 has no delta-layer
+ * discount, matching the ADS "conservative full size per cycle" convention.
+ * Billed only when the caller applies `crossRegionPull` (same-region pulls
+ * are $0 — @see estimate-scan-core.ts).
+ * @throws when imageCount, avgImageGB, or scansPerMonth is negative.
+ */
 export function registryPullGb(inputs: RegistryScanInputs): number {
   if (inputs.imageCount < 0 || inputs.avgImageGB < 0 || inputs.scansPerMonth < 0) {
     throw new Error("registry scan inputs must be non-negative");
@@ -57,7 +70,15 @@ export function registryPullGb(inputs: RegistryScanInputs): number {
   return inputs.imageCount * inputs.avgImageGB * inputs.scansPerMonth;
 }
 
-/** Serverless scan ops units (package × scans) — mapped to million-request style meters. */
+/**
+ * Serverless scan ops units: `packageCount × scansPerMonth`, mapped to
+ * million-request-style meters by the caller (÷1e6 × rate).
+ * NOTE: `avgPackageGB` is intentionally not billed here — meters for this
+ * capability are ops/request-denominated (not GB-denominated); GB volume is
+ * tracked in notes only (@see estimate-scan-core.ts). Do not multiply it in
+ * without also switching to a GB-rate meter.
+ * @throws when packageCount, avgPackageGB, or scansPerMonth is negative.
+ */
 export function serverlessScanOps(inputs: ServerlessScanInputs): number {
   if (
     inputs.packageCount < 0 ||

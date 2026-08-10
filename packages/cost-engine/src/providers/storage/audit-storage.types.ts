@@ -45,6 +45,12 @@ export type AuditStorageResult = {
 /** Floor capacity when audit is on but avgGB omitted/zero (AC). */
 export const DEFAULT_AUDIT_STORAGE_FLOOR_GB = 1;
 
+/**
+ * Resolve billable stored capacity (GB-month). `avgGB` (when > 0) wins;
+ * otherwise falls back to `DEFAULT_AUDIT_STORAGE_FLOOR_GB` with a warning —
+ * never a silent $0 while audit storage is enabled.
+ * @returns 0 when `!enabled` (no warning pushed).
+ */
 export function resolveCapacityGb(
   enabled: boolean,
   avgGB: number | undefined,
@@ -58,6 +64,10 @@ export function resolveCapacityGb(
   return DEFAULT_AUDIT_STORAGE_FLOOR_GB;
 }
 
+/**
+ * Look up a meter's unit price, failing closed instead of defaulting to $0.
+ * @throws when `meterId` is absent from `unitPrices`.
+ */
 export function requireRate(
   unitPrices: Record<string, number>,
   meterId: string,
@@ -69,6 +79,7 @@ export function requireRate(
   return p;
 }
 
+/** Sum of `LineItem.amount` across all items — plain linear total, no dedup. */
 export function sumAmounts(items: LineItem[]): number {
   return items.reduce((s, i) => s + i.amount, 0);
 }

@@ -29,6 +29,24 @@ export type AdsMeterIds = {
   providerLabel: string;
 };
 
+/**
+ * ADS Cloud/Outpost monthly estimate for one provider.
+ *
+ * Cloud mode: snapshot line only —
+ * `snapshotCost = vmCount × scansPerMonth × prorateSnapshotCost(avgUsedDiskGB, snapshotRate, snapshotLifetimeHours, monthHours)`
+ * (equivalently `snapshotGbMonthsUsedSize(...) × snapshotRate`, see `ads.types.ts`).
+ *
+ * Outpost mode: adds a scanner-compute line —
+ * `computeCost = outpostRate × scansPerMonth × outpostHoursPerScan`
+ * (scannerUnits pinned to 1 in v1).
+ *
+ * @param meters Provider-specific meter ids injected by the thin per-provider wrapper.
+ * @param inputs ADS toggle, mode, and volume signals.
+ * @param rates RateCard for `provider` — must carry `meters.snapshotMeterId`
+ * (and `meters.outpostMeterId` when `mode === "Outpost"`) or this throws (fail closed).
+ * @returns Line items + totals; `confidence` is "Med" for Cloud, "Low" once Outpost compute is added.
+ * @throws when `rates.provider` doesn't match `provider`, or a required meter price is missing.
+ */
 export function estimateAdsForProvider(
   provider: CloudProvider,
   meters: AdsMeterIds,

@@ -48,6 +48,13 @@ export type BreakdownRow = {
   note?: string;
 };
 
+/**
+ * Toggle flags → capability tokens for enabled capabilities (`discovery` excluded — no meters).
+ * Note: returns the literal `"egress"` token, not the engine's `audit_logs` capability
+ * that egress meters actually post under (see {@link CAPABILITY_TOGGLE_TO_ENGINE}) —
+ * callers that need the real engine capability set should go through
+ * {@link enabledCapabilitiesForLegend} instead, which corrects this.
+ */
 export function enabledEngineCapabilities(
   caps: CapabilityFlags,
 ): string[] {
@@ -62,6 +69,13 @@ export function enabledEngineCapabilities(
   return out;
 }
 
+/**
+ * Capability tokens to show in a legend for the enabled toggles, de-duplicated.
+ * Adds `audit_logs` when `egress` is enabled since egress cost actually posts
+ * as an `audit_logs` line item ({@link CAPABILITY_TOGGLE_TO_ENGINE}) — without
+ * this, an egress-only estimate would show a legend entry ("egress") that
+ * never matches a real line item's capability.
+ */
 export function enabledCapabilitiesForLegend(
   caps: CapabilityFlags,
 ): string[] {
@@ -72,6 +86,9 @@ export function enabledCapabilitiesForLegend(
 
 /**
  * Build breakdown rows: all line items plus placeholders for enabled caps with no meters.
+ * Placeholders always carry `amount: 0`, so appending them never changes the sum of
+ * amounts — safe to feed straight into {@link aggregateCostDrivers} without skewing
+ * its percentages relative to `estimate.totals.expected`.
  */
 export function buildBreakdownRows(
   estimate: EstimateLike | null,

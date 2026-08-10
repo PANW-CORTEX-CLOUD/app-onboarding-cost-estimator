@@ -102,28 +102,43 @@ export function parseFallbackDocument(raw: unknown): FallbackPricesDocument {
   };
 }
 
+/** Read + parse a fallback-prices.json file. @throws (via parseFallbackDocument) on any schema violation. */
 export function loadFallbackFile(filePath: string): FallbackPricesDocument {
   const text = fs.readFileSync(filePath, "utf8");
   return parseFallbackDocument(JSON.parse(text));
 }
 
-/** Convert fallback doc → RateCard. Omits meters not present (no invented $0). */
+/**
+ * Convert fallback doc → RateCard. Omits meters not present (no invented $0).
+ * `capturedAt` on the resulting card is the **oldest** (min) `capturedAt`
+ * across all meter rows, not the newest.
+ * @see core/rates/age-days.ts — age-based staleness checks and the
+ * critical-stale export Ack gate read `RateCard.capturedAt` as a single date;
+ * taking the newest row would let one freshly-touched meter mask an older,
+ * stale price still sitting elsewhere in the same file (silently under-report
+ * staleness) — fail closed to the least-fresh row instead.
+ */
 export function fallbackToRateCard(doc: FallbackPricesDocument): RateCard {
   const unitPrices: Record<string, number> = {};
-  let newest = doc.meters[0]?.capturedAt ?? new Date(0).toISOString();
+  let oldest = doc.meters[0]?.capturedAt ?? new Date(0).toISOString();
   for (const m of doc.meters) {
     unitPrices[m.meterId] = m.unitPrice;
-    if (Date.parse(m.capturedAt) > Date.parse(newest)) newest = m.capturedAt;
+    if (Date.parse(m.capturedAt) < Date.parse(oldest)) oldest = m.capturedAt;
   }
   return {
     provider: doc.provider,
     region: doc.region,
     currency: "USD",
     unitPrices,
-    capturedAt: newest,
+    capturedAt: oldest,
   };
 }
 
+/**
+ * Build a `RatesResult` from a fallback document, tagging `ratesSource: "fallback"`
+ * and appending a staleness warning when the card's (oldest-row) `capturedAt`
+ * is more than `FALLBACK_MAX_AGE_DAYS` old.
+ */
 export function fallbackResult(
   doc: FallbackPricesDocument,
   extraWarnings: string[] = [],

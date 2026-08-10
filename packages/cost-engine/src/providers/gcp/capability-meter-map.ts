@@ -89,6 +89,7 @@ export const gcpCapabilityMeterMap: readonly CapabilityMeterRow[] = [
     unit: "GB + 10k-ops",
     confidence: "Low",
     sourceUrl: "https://cloud.google.com/storage/pricing",
+    notes: "v1 formula bills scannedGB × blended $/GB proxy only — the 10k-ops component is not separately metered",
   },
   {
     capability: "registry",
@@ -109,6 +110,7 @@ export const gcpCapabilityMeterMap: readonly CapabilityMeterRow[] = [
     unit: "vCPU-second + GiB-second",
     confidence: "Low",
     sourceUrl: "https://cloud.google.com/run/pricing",
+    notes: "v1 formula bills a million-request proxy (packageCount × scansPerMonth), not metered vCPU/GiB-second compute time",
   },
 ] as const;
 

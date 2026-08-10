@@ -10,6 +10,13 @@ import type {
   AuditStorageResult,
 } from "./audit-storage.types.ts";
 
+/**
+ * Route to the per-provider audit-storage estimator (Azure Blob LRS / AWS S3
+ * Standard / GCP GCS Standard); each computes
+ * `capacityCost = resolveCapacityGb(...) × capacityRate` plus optional
+ * per-10k write/read ops cost using its own meter ids.
+ * @throws when `rates.provider` doesn't match `provider`.
+ */
 export function estimateAuditStorage(
   provider: CloudProvider,
   inputs: AuditStorageInputs,

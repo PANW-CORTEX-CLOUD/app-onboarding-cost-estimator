@@ -38,8 +38,8 @@ const awsRates: RateCard = {
   currency: "USD",
   unitPrices: {
     "s3-standard-storage": 0.023,
-    "s3-put-10k": 0.005,
-    "s3-get-10k": 0.0004,
+    "s3-put-1k": 0.005,
+    "s3-get-1k": 0.0004,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
 };

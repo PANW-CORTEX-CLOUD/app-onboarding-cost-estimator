@@ -82,6 +82,20 @@ function isMatchedService(service: string): boolean {
   return MATCH_HINTS.some((re) => re.test(service));
 }
 
+/**
+ * Parse an Azure/AWS/GCP billing export CSV for calibration.
+ * `totalActual` sums every parsed row's `amount`, matched or not — deliberately
+ * not filtered to `matched` rows: {@link isMatchedService} is a fuzzy keyword
+ * heuristic, so silently excluding "unmatched" rows risks undercounting real
+ * connector spend on a false negative. `unmatched` rows are surfaced instead
+ * (not excluded) so a human can judge how much of `totalActual` is unrelated
+ * spend before trusting a factor derived from it via
+ * {@link suggestCalibrationFactor}.
+ * Fails closed (`ok: false`) on: oversized file, unrecognized column shape,
+ * unparseable amount, and mixed or non-USD currency.
+ * @param text Raw CSV file contents.
+ * @param opts.maxBytes Size cap in bytes (default {@link CALIBRATION_MAX_BYTES}).
+ */
 export function parseBillingCsv(
   text: string,
   opts: { maxBytes?: number } = {},
@@ -201,7 +215,16 @@ export function parseBillingCsv(
 
 /**
  * Suggest volume calibration factor from estimated vs actual totals.
- * factor = actual / estimated when estimated > 0.
+ * `factor = actual / estimated` — NOT `(actual - estimated) / estimated` (that
+ * would be a delta ratio, not a scaling multiplier). This is intentionally a
+ * multiplier meant to be applied directly to volume inputs via
+ * {@link scaleVolumeFields}: actual > estimated ⇒ factor > 1 ⇒ scale volume up,
+ * so the next estimate moves toward actual; actual < estimated ⇒ factor < 1 ⇒
+ * scale down. Returns `null` (not a divide-by-zero result) when `estimated <= 0`
+ * or either input is non-finite.
+ * @param estimated Current estimate's expected total (denominator).
+ * @param actual Actual total from a parsed billing CSV (e.g. {@link CalibrationParseResult.totalActual}).
+ * @returns The multiplier, or `null` if it can't be computed.
  */
 export function suggestCalibrationFactor(
   estimated: number,
@@ -213,7 +236,15 @@ export function suggestCalibrationFactor(
   return actual / estimated;
 }
 
-/** Scale volume numeric fields by factor (not unit prices). */
+/**
+ * Scale volume numeric fields by factor (not unit prices) — multiplies every
+ * numeric field in `volume` by `factor` in place on a shallow copy. Throws
+ * (rather than silently no-op'ing) on a non-finite or non-positive factor so
+ * a bad calibration input can't zero out or invert the user's volume inputs.
+ * @param volume Current volume inputs, all-numeric.
+ * @param factor Multiplier, typically from {@link suggestCalibrationFactor}.
+ * @returns A new object with every field replaced by `field * factor`.
+ */
 export function scaleVolumeFields<T extends Record<string, number>>(
   volume: T,
   factor: number,

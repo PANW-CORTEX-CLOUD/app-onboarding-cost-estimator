@@ -85,6 +85,7 @@ export type CreateEstimateResponse = EstimateResult & {
   };
 };
 
+/** Worst-case (most conservative) confidence across all line items: Low > Med > High. */
 function worstConfidence(items: LineItem[]): Confidence {
   if (items.some((i) => i.confidence === "Low")) return "Low";
   if (items.some((i) => i.confidence === "Med")) return "Med";
@@ -92,8 +93,20 @@ function worstConfidence(items: LineItem[]): Confidence {
 }
 
 /**
- * Build a monthly estimate for one provider.
+ * Build a monthly estimate for one provider by calling each enabled
+ * capability's shared estimator and flattening their line items.
+ *
+ * `totals.expected` is summed once from the flattened `lineItems` (never
+ * from pre-aggregated sub-estimator totals) so no capability's cost can be
+ * counted twice. Overall `confidence` is the worst confidence across all
+ * line items (@see worstConfidence); when that is "Low", the response
+ * exposes a `{low, expected, high}` band via `bandFromExpected` instead of
+ * a bare point (AC pkg 19 — reuses the DSPM 0.5×/2.0× band factors for any
+ * Low-confidence mix, not DSPM-specific math).
+ *
  * Uses fallback/live rates via getRates — never invents $0 meters.
+ * @throws when `monthHours` ≤ 0, `assumedEventBytes` ≤ 0 (when provided), or
+ * `rates.provider` doesn't match the requested provider.
  */
 export async function createEstimate(
   req: CreateEstimateRequest,
@@ -254,6 +267,15 @@ export async function createEstimate(
   }
 
   if (caps.egress) {
+    // Deliberately NOT alreadyBilledElsewhere: this bills the customer's
+    // internet-egress bandwidth meter (VNet/VPC → Cortex SaaS backend), which
+    // is a distinct real-world charge from the stream-ingestion meter billed
+    // above (EH/Kinesis/Pub·Sub) even though both derive their volume from the
+    // same audit-log bytes — ingesting into the managed stream and then
+    // egressing that stream's data to the internet are two separate billable
+    // hops in each provider's real pricing model. `alreadyBilledElsewhere` is
+    // for genuinely redundant meters (e.g. registry pull bandwidth already
+    // covered by a stream meter), not this case.
     const monthlyIngress =
       streamIngressGbPerDay * (monthHours / 24);
     const eg = estimateEgress(

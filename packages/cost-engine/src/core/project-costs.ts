@@ -97,6 +97,14 @@ export function isThroughputStepMeter(meterId: string): boolean {
 /**
  * Continuous volume growth factor for month (1-based).
  * Month 1 → 1.0.
+ *
+ * Verified: standard monthly-compounding conversion of an annual rate —
+ * `monthlyRate = (1 + annual/100)^(1/12) - 1`, then compounded `month - 1` times so
+ * `volumeGrowthFactor(13, g) === 1 + g/100` (i.e. the annual rate is fully realized
+ * after 12 elapsed months, month 1 being the baseline). Negative growth is floored
+ * to 0 by the caller-facing API (`projectCosts`), never inside this pure helper.
+ * @param month 1-based month index (1 = baseline, no growth applied yet).
+ * @param annualGrowthPercent Annual growth rate, e.g. 12 = 12%/yr. Must be >= 0 here.
  */
 export function volumeGrowthFactor(
   month: number,
@@ -111,6 +119,18 @@ export function volumeGrowthFactor(
 /**
  * Step capacity units for TU / Kinesis / PubSub: ceil(baseUnits × volumeIndex).
  * baseUnits inferred as 1 relative unit at month 1 for the line's amount.
+ *
+ * Verified intentional (not a rounding bug): because baseUnits is assumed to be
+ * exactly 1 provisioned unit fully utilized at month 1, `ceil()` means *any*
+ * volumeIndex > 1 — even a fractional-percent increase — steps the multiplier to 2
+ * immediately, and it then holds flat at 2× until volumeIndex actually reaches 2.0.
+ * This intentionally overstates near-term growth cost (fails closed / conservative)
+ * rather than modeling partial headroom in the already-provisioned unit, which this
+ * model has no way to know. Locked by the `TU / Kinesis / PubSub use step functions`
+ * test in `core/__tests__/project-costs.test.ts` — do not "smooth" this without
+ * updating that test and the product's confidence-banding policy.
+ * @param volumeIndex Growth-relative volume, 1.0 at month 1 (see {@link volumeGrowthFactor}).
+ * @returns Integer unit multiplier, minimum 1.
  */
 export function steppedCapacityMultiplier(volumeIndex: number): number {
   if (!Number.isFinite(volumeIndex) || volumeIndex <= 0) return 1;
