@@ -89,3 +89,26 @@ export const RefreshRatesRequestSchema = z
     forceLive: z.boolean().optional(),
   })
   .strict();
+
+/**
+ * Freeze takes the same inputs as an estimate — the server re-runs it and
+ * pins the card it actually priced with, rather than trusting a client to
+ * echo back totals it could have edited.
+ */
+export const FreezeEstimateRequestSchema = CreateEstimateRequestSchema.extend({
+  /** Required when rates are critically stale (@see core/rate-pinning.ts). */
+  ackCriticalStale: z.boolean().optional(),
+}).strict();
+
+/**
+ * Reload accepts the frozen payload verbatim. Its shape is validated by the
+ * engine's own `validateExportSchema` rather than mirrored into zod here —
+ * duplicating that contract is exactly the drift this repo keeps finding
+ * (@see docs/IMPROVEMENT_PLAN.md REQ-13).
+ */
+export const ReloadFrozenEstimateRequestSchema = z
+  .object({
+    payload: z.unknown(),
+    requireCurrentModelVersion: z.boolean().optional(),
+  })
+  .strict();

@@ -14,10 +14,7 @@ import {
   EstimateApiError,
 } from "../../features/run-estimate/runEstimate.ts";
 import { fetchCapabilities } from "../../features/toggle-capabilities/fetchCapabilities.ts";
-import {
-  freezeFromEstimate,
-  type FrozenRatesMeta,
-} from "../../features/freeze-rates/freezeFromEstimate.ts";
+import type { FrozenRatesMeta } from "../../features/freeze-rates/freezeFromEstimate.ts";
 import {
   initialOfflineEngineEnabled,
   setOfflineEngineEnabled,
@@ -208,6 +205,8 @@ export function EstimatorPage() {
     useState<ExportFreshness | null>(null);
   const [ackCriticalStale, setAckCriticalStale] = useState(false);
   const [frozen, setFrozen] = useState<FrozenRatesMeta | null>(null);
+  const [freezing, setFreezing] = useState(false);
+  const [freezeError, setFreezeError] = useState<string | null>(null);
   const [offlineEngine, setOfflineEngine] = useState(() =>
     initialOfflineEngineEnabled(),
   );
@@ -1166,15 +1165,83 @@ export function EstimatorPage() {
     setOfflineEngineEnabled(checked);
   }
 
-  function onFreeze() {
+  /**
+   * Freeze the current estimate server-side and download the pinned payload.
+   *
+   * Previously this only stamped ratesAsOf/modelVersion locally: the button
+   * said "freeze" but nothing was actually pinned, so the quote could not be
+   * reproduced later. It now calls /estimates/freeze, which re-runs the
+   * estimate and pins the rate card it priced with, and hands the user the
+   * file that /estimates/reload can replay.
+   */
+  async function onFreeze() {
     if (!estimate) return;
-    setFrozen(
-      freezeFromEstimate({
-        ratesAsOf: estimate.ratesAsOf,
-        modelVersion: estimate.modelVersion,
-        inputHash: estimate.inputHash,
-      }),
-    );
+    setFreezeError(null);
+    setFreezing(true);
+    try {
+      const { data, error } = await client.POST("/estimates/freeze", {
+        body: {
+          provider,
+          region,
+          capabilities: caps,
+          tfMode,
+          monthHours,
+          // Same volume the estimate was run with - freezing a different
+          // shape would pin a quote the user never saw.
+          volume: {
+            accountCount,
+            monthlyActiveUsers: mau,
+            logIntensity,
+            overrideStreamMetrics,
+            ingressGBPerDay,
+            peakMBps,
+            peakEventsPerSec,
+            avgStoredGB,
+            vmCount,
+            avgUsedDiskGB,
+            dataEstateGB,
+            pctScanned,
+            scansPerMonth,
+            imageCount,
+            avgImageGB,
+            packageCount,
+            egressGB,
+            avgObjectSizeMB,
+            assumedEventBytes,
+          },
+          ...(ackCriticalStale ? { ackCriticalStale: true } : {}),
+        },
+      });
+      if (error || !data) {
+        // Fail closed and say why - a freeze that silently produced nothing
+        // would leave the user believing they have a reproducible quote.
+        const detail =
+          (error as { detail?: string; title?: string } | undefined)?.detail ??
+          (error as { title?: string } | undefined)?.title ??
+          "Freeze failed.";
+        setFreezeError(detail);
+        return;
+      }
+      setFrozen({
+        ratesAsOf: data.ratesAsOf,
+        modelVersion: data.modelVersion,
+        inputHash: data.inputHash,
+        frozenAt: data.frozenAt,
+      });
+      downloadBlob(
+        `cortex-frozen-estimate-${data.provider}-${data.inputHash}.json`,
+        new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      setExportMsg("Frozen estimate downloaded — reload it to reproduce this quote.");
+    } catch (e) {
+      setFreezeError(
+        e instanceof Error ? e.message : "Freeze failed (network error).",
+      );
+    } finally {
+      setFreezing(false);
+    }
   }
 
   function onDemoApply(preset: DemoPreset) {
@@ -1687,16 +1754,23 @@ export function EstimatorPage() {
                         </label>
                         <button
                           type="button"
-                          onClick={onFreeze}
-                          disabled={!estimate}
+                          onClick={() => void onFreeze()}
+                          disabled={!estimate || freezing}
                           data-testid="freeze-rates"
-                          title="Pin ratesAsOf + modelVersion on the current estimate"
+                          title="Pin this estimate's rate card and download a payload that reproduces it"
                         >
-                          Freeze rates snapshot
+                          {freezing
+                            ? "Freezing…"
+                            : "Freeze rates snapshot"}
                         </button>
                         {fromCache ? (
                           <p data-testid="cached-estimate-note">
                             Showing a cached estimate — not a fresh API result.
+                          </p>
+                        ) : null}
+                        {freezeError ? (
+                          <p role="alert" data-testid="freeze-error">
+                            {freezeError}
                           </p>
                         ) : null}
                         {frozen ? (

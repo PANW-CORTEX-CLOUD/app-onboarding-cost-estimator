@@ -129,6 +129,19 @@ export type CreateEstimateResponse = EstimateResult & {
   tfMode: TfMode;
   /** Capabilities dropped because the Terraform will not deploy them. */
   excludedCapabilities: Array<{ capability: string; reason: string }>;
+  /**
+   * The exact card these line items were priced from.
+   *
+   * Exposed so a caller that wants to freeze this estimate
+   * (@see core/rate-pinning.ts) pins the card that actually produced the
+   * total, rather than re-fetching and risking a different one - a live
+   * refresh between the two calls would otherwise freeze rates that never
+   * matched the frozen number.
+   *
+   * Not part of the HTTP response body: packages/api forwards named fields
+   * and deliberately does not return rate internals from /v1/estimates.
+   */
+  rateCard: RateCard;
 };
 
 /** Worst-case (most conservative) confidence across all line items: Low > Med > High. */
@@ -433,5 +446,6 @@ export async function createEstimate(
     },
     tfMode,
     excludedCapabilities: gate.excluded,
+    rateCard: rates,
   };
 }

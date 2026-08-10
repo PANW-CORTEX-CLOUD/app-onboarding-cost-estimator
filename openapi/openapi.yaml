@@ -115,6 +115,56 @@ paths:
                 $ref: "#/components/schemas/EstimateResponse"
         "400":
           $ref: "#/components/responses/Problem"
+  /estimates/freeze:
+    post:
+      operationId: freezeEstimate
+      tags: [estimates]
+      summary: Freeze an estimate with its rate card pinned
+      description: >-
+        Re-runs the estimate server-side and pins the exact rate card it was
+        priced with, so the returned payload reproduces the same total later
+        even after live rates move. Fails closed when rates are critically
+        stale unless ackCriticalStale is true.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FreezeEstimateRequest"
+      responses:
+        "200":
+          description: Frozen estimate export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrozenEstimateExport"
+        "400":
+          $ref: "#/components/responses/Problem"
+  /estimates/reload:
+    post:
+      operationId: reloadFrozenEstimate
+      tags: [estimates]
+      summary: Reload a previously frozen estimate
+      description: >-
+        Replays a frozen payload. A corrupt payload, a wrong schemaVersion, or
+        a modelVersion the engine has moved past all fail closed with a named
+        reason rather than silently re-pricing at today's rates. Reload does
+        not re-run the estimator - inputHash is what detects tampering.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReloadFrozenEstimateRequest"
+      responses:
+        "200":
+          description: Frozen payload plus any age warnings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReloadFrozenEstimateResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
   /projections:
     post:
       operationId: createProjection
@@ -411,6 +461,154 @@ components:
           enum: [High, Med, Low]
         verification:
           $ref: "#/components/schemas/MeterVerification"
+    FreezeEstimateRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, region, capabilities]
+      description: >-
+        Same inputs as CreateEstimateRequest - the server re-runs the estimate
+        rather than trusting a client to echo back totals it could have edited.
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        region:
+          type: string
+          minLength: 1
+        capabilities:
+          $ref: "#/components/schemas/EstimateCapabilities"
+        volume:
+          $ref: "#/components/schemas/EstimateVolume"
+        monthHours:
+          type: number
+        tfMode:
+          $ref: "#/components/schemas/TfMode"
+        ackCriticalStale:
+          type: boolean
+          description: >-
+            Required when rates are critically stale; without it the freeze
+            fails closed rather than pinning prices nobody acknowledged.
+    PinnedRateCard:
+      type: object
+      additionalProperties: false
+      required: [provider, region, currency, unitPrices, capturedAt]
+      description: The rate card the frozen estimate was priced with.
+      properties:
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        region:
+          type: string
+        currency:
+          type: string
+          enum: [USD]
+        unitPrices:
+          type: object
+          additionalProperties:
+            type: number
+        unitTiers:
+          type: object
+          description: >-
+            Published price ladders, pinned alongside unitPrices. A graduated
+            meter reloaded without its ladder would re-price flat at the first
+            band and not reproduce the frozen total.
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [fromUnits, unitPrice]
+              properties:
+                fromUnits:
+                  type: number
+                unitPrice:
+                  type: number
+        capturedAt:
+          type: string
+          format: date-time
+    FrozenEstimateExport:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - provider
+        - modelVersion
+        - ratesAsOf
+        - inputHash
+        - rateCard
+        - inputs
+        - lineItems
+        - totals
+        - confidence
+        - disclaimer
+        - frozenAt
+        - warnings
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        provider:
+          $ref: "#/components/schemas/CloudProvider"
+        modelVersion:
+          type: string
+        ratesAsOf:
+          type: string
+          format: date-time
+        inputHash:
+          type: string
+        rateCard:
+          $ref: "#/components/schemas/PinnedRateCard"
+        inputs:
+          type: object
+          description: The estimate inputs this quote was frozen from.
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineItem"
+        totals:
+          type: object
+          additionalProperties: false
+          required: [expected]
+          properties:
+            expected:
+              type: number
+            low:
+              type: number
+            high:
+              type: number
+        confidence:
+          type: string
+          enum: [High, Med, Low]
+        disclaimer:
+          type: string
+        frozenAt:
+          type: string
+          format: date-time
+        warnings:
+          type: array
+          items:
+            type: string
+    ReloadFrozenEstimateRequest:
+      type: object
+      additionalProperties: false
+      required: [payload]
+      properties:
+        payload:
+          description: >-
+            A previously frozen export. Validated by the engine's own
+            validateExportSchema rather than re-declared here, so the contract
+            has one owner.
+        requireCurrentModelVersion:
+          type: boolean
+    ReloadFrozenEstimateResponse:
+      type: object
+      additionalProperties: false
+      required: [payload, warnings]
+      properties:
+        payload:
+          $ref: "#/components/schemas/FrozenEstimateExport"
+        warnings:
+          type: array
+          items:
+            type: string
     EstimateResponse:
       type: object
       additionalProperties: false

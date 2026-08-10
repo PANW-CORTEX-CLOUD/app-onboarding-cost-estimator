@@ -254,6 +254,122 @@ describe("package 17 — FSD UI", () => {
   });
 });
 
+describe("freeze rates snapshot", () => {
+  beforeEach(() => {
+    clearEstimateCache();
+    sessionStorage.setItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY, "1");
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    cleanup();
+    sessionStorage.removeItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY);
+  });
+
+  it("calls the freeze endpoint and shows the server-pinned metadata", async () => {
+    // The button used to only stamp ratesAsOf/modelVersion client-side, so it
+    // pinned nothing and the quote could not be reproduced. It must now reach
+    // the API and render what the server actually froze.
+    const client = createMockClient();
+    const basePost = (
+      client.POST as unknown as {
+        getMockImplementation: () => (path: string, init?: unknown) => unknown;
+      }
+    ).getMockImplementation();
+    (client.POST as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string, init?: unknown) => {
+        if (path === "/estimates/freeze") {
+          return {
+            data: {
+              schemaVersion: 1,
+              provider: "azure",
+              modelVersion: "9.9.9",
+              ratesAsOf: "2026-07-01T00:00:00.000Z",
+              inputHash: "cafebabe",
+              frozenAt: "2026-08-10T00:00:00.000Z",
+              rateCard: {
+                provider: "azure",
+                region: "eastus",
+                currency: "USD",
+                unitPrices: { "eh-standard-tu": 0.03 },
+                capturedAt: "2026-07-01T00:00:00.000Z",
+              },
+              inputs: {},
+              lineItems: [],
+              totals: { expected: 12.34 },
+              confidence: "Med",
+              disclaimer: "x".repeat(30),
+              warnings: [],
+            },
+            error: undefined,
+            response: new Response(null, { status: 200 }),
+          };
+        }
+        return basePost(path, init);
+      },
+    );
+
+    render(<App client={client} />);
+    fireEvent.click(screen.getByTestId("run-estimate"));
+    // The freeze button lives in the collapsed "Assumptions & run" step.
+    fireEvent.click(screen.getByTestId("journey-step-tab-run"));
+    await waitFor(() => {
+      expect(screen.getByTestId("freeze-rates")).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByTestId("freeze-rates"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("frozen-meta")).toHaveTextContent("9.9.9");
+    });
+    expect(client.POST).toHaveBeenCalledWith(
+      "/estimates/freeze",
+      expect.objectContaining({
+        body: expect.objectContaining({ provider: "azure" }),
+      }),
+    );
+  });
+
+  it("EDGE: a failed freeze surfaces an error instead of claiming success", async () => {
+    const client = createMockClient();
+    const basePost = (
+      client.POST as unknown as {
+        getMockImplementation: () => (path: string, init?: unknown) => unknown;
+      }
+    ).getMockImplementation();
+    (client.POST as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string, init?: unknown) => {
+        if (path === "/estimates/freeze") {
+          return {
+            data: undefined,
+            error: {
+              status: 400,
+              title: "Freeze failed",
+              detail: "critical-stale rates require Ack before export",
+            },
+            response: new Response(null, { status: 400 }),
+          };
+        }
+        return basePost(path, init);
+      },
+    );
+
+    render(<App client={client} />);
+    fireEvent.click(screen.getByTestId("run-estimate"));
+    // The freeze button lives in the collapsed "Assumptions & run" step.
+    fireEvent.click(screen.getByTestId("journey-step-tab-run"));
+    await waitFor(() => {
+      expect(screen.getByTestId("freeze-rates")).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByTestId("freeze-rates"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("freeze-error")).toHaveTextContent(
+        /require Ack/i,
+      );
+    });
+    expect(screen.queryByTestId("frozen-meta")).toBeNull();
+  });
+});
+
 describe("last-shared-state restore on cold load", () => {
   beforeEach(() => {
     clearEstimateCache();
