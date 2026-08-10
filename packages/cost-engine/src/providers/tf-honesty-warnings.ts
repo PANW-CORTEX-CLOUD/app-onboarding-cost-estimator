@@ -9,6 +9,8 @@ import {
   NO_TF_INVENTORY_WARNING,
   type AzureModeledNoTfCapability,
 } from "./azure/tf-audit-reconciliation.ts";
+import { AWS_TF_PRESENT } from "./aws/capability-meter-map.ts";
+import { GCP_TF_PRESENT } from "./gcp/capability-meter-map.ts";
 
 export type HonestyCapabilityFlags = {
   discovery?: boolean;
@@ -35,8 +37,12 @@ const CAP_FLAG_TO_MODELED: Array<{
 
 /**
  * Append at most one Azure modeled warning and one AWS/GCP no-TF note.
- * AWS/GCP: no connector TF inventory exists yet, so every enabled capability
- * is flagged as modeled-not-TF-verified (one combined note, deduped).
+ * AWS/GCP: gated on {@link AWS_TF_PRESENT}/{@link GCP_TF_PRESENT} rather than
+ * a hardcoded provider check, so the day either provider's connector TF
+ * inventory lands and its flag flips to `true`, this warning stops firing
+ * for that provider without a second edit here. Until then, no connector TF
+ * inventory exists for either, so every enabled capability is flagged as
+ * modeled-not-TF-verified (one combined note, deduped).
  * Azure: only capabilities outside `AZURE_MODELED_NO_TF_CAPABILITIES` (the
  * audit stream + storage) are TF-grounded; audit-only (no modeled caps on)
  * → no warning. Discovery alone does not trigger modeled spam (it has no
@@ -52,7 +58,16 @@ export function appendTfHonestyWarnings(
   warnings: string[],
 ): void {
   if (provider === "aws" || provider === "gcp") {
-    if (!warnings.some((w) => w.includes(NO_TF_INVENTORY_WARNING))) {
+    // Neither flag has an AWS/GCP equivalent of Azure's modeled-capability
+    // reconciliation yet, so a provider whose TF inventory becomes present
+    // gets no honesty warning at all here rather than falling into
+    // Azure-shaped logic that doesn't apply to it. Revisit when AWS/GCP gain
+    // their own TF-grounding path (mirroring AZURE_MODELED_NO_TF_CAPABILITIES).
+    const tfPresent = provider === "aws" ? AWS_TF_PRESENT : GCP_TF_PRESENT;
+    if (
+      !tfPresent &&
+      !warnings.some((w) => w.includes(NO_TF_INVENTORY_WARNING))
+    ) {
       warnings.push(
         `${provider.toUpperCase()}: ${NO_TF_INVENTORY_WARNING}`,
       );
