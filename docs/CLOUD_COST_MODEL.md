@@ -91,7 +91,7 @@ Bill only **customer-cloud meters** (streams, storage, snapshots, scanner comput
 | ads_outpost | Compute + disk access for outpost scanner VM | vm-outpost-scanner | Virtual Machines (outpost scanner SKU) | hour | Med | https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/ |
 | dspm | Data-plane read on blob estates + connector ephemeral infra | blob-hot-lrs-read-10k | Blob Storage Hot LRS read operations (Get Blob) | 10k-ops | Low | https://azure.microsoft.com/en-us/pricing/details/storage/blobs/ |
 | dspm | Data-plane read on blob estates + connector ephemeral infra | blob-hot-lrs-list-10k | Blob Storage List Blobs (list + create container) | 10k-ops | Low | https://azure.microsoft.com/en-us/pricing/details/storage/blobs/ |
-| registry | ACR pull for incremental image scan | acr-pull-bandwidth | Container Registry / bandwidth (scan pull) | GB | Low | https://azure.microsoft.com/en-us/pricing/details/container-registry/ |
+| registry | Registry pull for incremental image scan | azure-egress-gb | Bandwidth data transfer out (cross-region scan pull) | GB | Low | https://azure.microsoft.com/en-us/pricing/details/bandwidth/ |
 | serverless | Function App list/read for package scan | functions-scan-ops | Azure Functions (incremental scan ops / bandwidth) | GB + million-exec | Low | https://azure.microsoft.com/en-us/pricing/details/functions/ |
 | egress | Network egress permitted by connector NSG / routing | azure-egress-gb | Bandwidth data transfer out | GB | Low | https://azure.microsoft.com/en-us/pricing/details/bandwidth/ |
 
@@ -109,7 +109,7 @@ Bill only **customer-cloud meters** (streams, storage, snapshots, scanner comput
 | ads_outpost | EC2 run for outpost scanner | ec2-outpost-scanner | Amazon EC2 (outpost scanner) | hour | Med | https://aws.amazon.com/ec2/pricing/on-demand/ |
 | dspm | S3 data-plane reads + connector ephemeral infra | s3-get-10k | S3 GET requests (Tier2) | 10k-ops | Low | https://aws.amazon.com/s3/pricing/ |
 | dspm | S3 data-plane reads + connector ephemeral infra | s3-put-10k | S3 LIST requests (Tier1) | 10k-ops | Low | https://aws.amazon.com/s3/pricing/ |
-| registry | ECR pull for incremental image scan | ecr-data-transfer | ECR data transfer (scan pull) | GB | Low | https://aws.amazon.com/ecr/pricing/ |
+| registry | Registry pull for incremental image scan | aws-egress-gb | Data transfer out (cross-region scan pull) | GB | Low | https://aws.amazon.com/ec2/pricing/on-demand/ |
 | serverless | lambda:ListFunctions / GetFunction for package scan | lambda-scan-ops | AWS Lambda (incremental scan) | GB-second + requests | Low | https://aws.amazon.com/lambda/pricing/ |
 | egress | Network egress from VPC / S3 to destination | aws-egress-gb | EC2/S3 data transfer out | GB | Low | https://aws.amazon.com/ec2/pricing/on-demand/ |
 
@@ -127,7 +127,7 @@ Bill only **customer-cloud meters** (streams, storage, snapshots, scanner comput
 | ads_outpost | compute.instances.create for outpost scanner | gce-outpost-scanner | Compute Engine VM (outpost scanner) | hour | Med | https://cloud.google.com/compute/vm-instance-pricing |
 | dspm | GCS data reads + connector ephemeral infra | gcs-class-b-10k | Cloud Storage Class B operations (get object) | 10k-ops | Low | https://cloud.google.com/storage/pricing |
 | dspm | GCS data reads + connector ephemeral infra | gcs-class-a-10k | Cloud Storage Class A operations (list objects) | 10k-ops | Low | https://cloud.google.com/storage/pricing |
-| registry | Artifact Registry pull for incremental scan | artifact-registry-egress | Artifact Registry network egress (scan pull) | GB | Low | https://cloud.google.com/artifact-registry/pricing |
+| registry | Registry pull for incremental image scan | gcp-egress-gb | VPC network egress (cross-region scan pull) | GB | Low | https://cloud.google.com/vpc/network-pricing |
 | serverless | Cloud Run / Cloud Functions list+read for package scan | cloud-run-scan-ops | Cloud Run / Cloud Functions (incremental scan) | vCPU-second + GiB-second | Low | https://cloud.google.com/run/pricing |
 | egress | Network egress from VPC to destination | gcp-egress-gb | VPC network egress | GB | Low | https://cloud.google.com/vpc/network-pricing |
 

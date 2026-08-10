@@ -79,7 +79,7 @@ that converts bytes into calls.
   estimate notes, so the line is auditable without reading the source.
   *Tests*: notes contain object count and both operation counts.
 
-## REQ-2 — Every priced meter must exist in the vendor's price list  `todo`
+## REQ-2 — Every priced meter must exist in the vendor's price list  `doing`
 
 Four meters do not. Two more are attributed to the wrong service. They are
 flagged and forced to Low confidence today, which stops them lying, but they
@@ -87,12 +87,19 @@ still produce numbers.
 
 ### UC-2.1 — Registry scan on Azure is priced from real ACR SKUs
 
-- **T-2.1.1** `todo` Replace `acr-pull-bandwidth` with the Registry Unit per
-  day (Standard $0.6666/day, verified) plus `azure-egress-gb` when
-  `crossRegionPull` is true.
-  *Tests*: same-region pull is $0; cross-region uses the egress meter;
-  **edge** a registry with zero images still bills the daily registry unit,
-  because the SKU is charged whether or not it is used.
+- **T-2.1.1** `done` — **and the plan above was wrong.** Research corrected it:
+  Microsoft states there is *no per-GB charge for pulling images*; the bill is
+  the registry SKU plus storage plus standard network egress, and same-region
+  pulls incur no egress at all. Billing the daily Registry Unit would have been
+  a second error: that SKU is **pre-existing customer infrastructure**, not a
+  cost caused by onboarding Cortex, and this repo's own rule is to bill only
+  meters Cortex causes.
+  What shipped: `acr-pull-bandwidth`, `ecr-data-transfer` and
+  `artifact-registry-egress` are all retired, and registry scanning bills
+  `azure-egress-gb` / `aws-egress-gb` / `gcp-egress-gb` — real, verified meters
+  — only when `crossRegionPull` is true.
+  *Tests*: same-region pull is $0; cross-region uses the egress meter; the
+  retired ids are billed by nothing; **e2e** confirms $0 same-region via the API.
 
 ### UC-2.2 — GCP ADS snapshots are priced from the source disk type
 
@@ -160,17 +167,22 @@ which would change a customer's quote.
   *assumption* defaults (10 accounts, 4 scans). Assumptions should appear in the
   estimate's assumption snapshot so the customer sees what was guessed.
 
-## REQ-6 — A missing input must not silently become zero  `todo`
+## REQ-6 — A missing input must not silently become zero  `done`
 
 `vol.dataEstateGB ?? 0`, `vol.vmCount ?? 0` and friends turn "the user told us
 nothing" into "the answer is zero". The estimators then warn, so it is not
 silent in the output — but the request layer has already destroyed the
 distinction between *absent* and *deliberately zero*.
 
-- **T-6.1.1** `todo` Carry `undefined` through to the estimators and let each
-  decide: `undefined` → refuse or prompt, `0` → an explicit zero the user chose.
-  *Tests*: absent vs zero produce different warnings; **edge** a capability on
-  with every driver absent fails closed rather than reporting $0.
+- **T-6.1.1** `done` Implemented as a declarative guard
+  (`providers/capability-drivers.ts`) rather than by changing every estimator's
+  signature: a capability whose sizing drivers are *all* absent is refused
+  before pricing; an explicit `0` is treated as a decision and priced.
+  *Tests*: absent vs zero diverge; **edge** explicit zero is priced and warned;
+  **edge** Azure is stricter still (empty discovery TF refuses even an explicit
+  zero — two fail-closed rules compose, strictest wins); **edge** as-deployed
+  drops an undeployed capability before the guard can reject it; **e2e** the
+  API returns a 400 naming the missing fields.
 
 ## REQ-7 — The engine must be debuggable without a debugger  `doing` (T-7.1.1 done)
 
@@ -183,6 +195,18 @@ means adding `console.log` and removing it again.
   throwing serialiser must not break an estimate.
 - **T-7.1.2** `todo` Instrument the estimate pipeline: resolved volume, per
   capability meter selection, rate source and verification verdict.
+
+## REQ-9 — One rule, one implementation  `done`
+
+`scripts/validate-prices.mjs` carried its own copy of the ledger↔rate-file
+binding rule that also lives in the engine's `assertFallbackMatchesLedger`. The
+two drifted the first time the rule changed: retiring a meter satisfied the
+engine and still failed the CI gate. The script now imports the engine's
+implementation (via `node --experimental-strip-types`), so the rule is defined
+once.
+
+*Learning worth keeping*: any invariant asserted in both a gate script and the
+engine is a drift waiting to happen. Prefer importing the engine.
 
 ## REQ-8 — Public surface should be the surface we mean  `needs-approval`
 

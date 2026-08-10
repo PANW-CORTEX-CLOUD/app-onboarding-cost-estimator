@@ -14,7 +14,18 @@ import type {
   ServerlessScanInputs,
 } from "../registry-serverless/scan.types.ts";
 
-export const AZURE_REGISTRY_METER = "acr-pull-bandwidth";
+/**
+ * Registry scanning is billed as network egress, not as a registry meter.
+ *
+ * Azure Container Registry publishes no per-GB pull charge: the bill is the registry SKU plus storage (both pre-existing customer infrastructure, not caused by onboarding Cortex) and standard network egress. Same-region pulls incur no egress.
+ *
+ * The estimator previously used an invented per-GB "pull bandwidth" meter that
+ * matches no vendor SKU. Pointing it at the real egress meter keeps the number
+ * defensible and keeps same-region scanning at $0, which is what actually happens.
+ *
+ * @see https://azure.microsoft.com/en-us/pricing/details/bandwidth/
+ */
+export const AZURE_REGISTRY_METER = "azure-egress-gb";
 export const AZURE_SERVERLESS_METER = "functions-scan-ops";
 
 export function estimateAzureRegistryScan(

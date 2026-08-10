@@ -14,7 +14,18 @@ import type {
   ServerlessScanInputs,
 } from "../registry-serverless/scan.types.ts";
 
-export const AWS_REGISTRY_METER = "ecr-data-transfer";
+/**
+ * Registry scanning is billed as network egress, not as a registry meter.
+ *
+ * The AmazonECR price list has no data-transfer meter: ECR bills storage plus standard AWS data transfer out. Same-region pulls are not charged.
+ *
+ * The estimator previously used an invented per-GB "pull bandwidth" meter that
+ * matches no vendor SKU. Pointing it at the real egress meter keeps the number
+ * defensible and keeps same-region scanning at $0, which is what actually happens.
+ *
+ * @see https://aws.amazon.com/ec2/pricing/on-demand/
+ */
+export const AWS_REGISTRY_METER = "aws-egress-gb";
 export const AWS_SERVERLESS_METER = "lambda-scan-ops";
 
 export function estimateAwsRegistryScan(

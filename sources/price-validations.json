@@ -248,7 +248,8 @@
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/",
       "dimension": "ops",
-      "notes": "Price is per 10k operations, NOT per GB. DSPM must convert scanned GB to read operations via an explicit object-size assumption."
+      "notes": "Price is per 10k operations, NOT per GB. DSPM must convert scanned GB to read operations via an explicit object-size assumption. Superseded by blob-hot-lrs-read-10k + blob-hot-lrs-list-10k when DSPM moved to operation-based pricing (2026-08-10). The price itself was real; the way it was used was not.",
+      "retired": true
     },
     {
       "meterId": "acr-pull-bandwidth",
@@ -271,7 +272,8 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/container-registry/",
-      "notes": "ACR egress is billed through the Bandwidth service, and same-region pulls are not charged. 0.01/GB matches no Azure SKU."
+      "notes": "ACR egress is billed through the Bandwidth service, and same-region pulls are not charged. 0.01/GB matches no Azure SKU. ACR publishes no per-GB pull charge; registry SKU and storage are pre-existing customer cost. Retired 2026-08-10 \u2014 registry scanning now bills azure-egress-gb, and only when crossRegionPull.",
+      "retired": true
     },
     {
       "meterId": "functions-scan-ops",
@@ -565,7 +567,8 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://aws.amazon.com/s3/pricing/",
-      "notes": "DSPM S3 scanning really costs GET requests (Requests-Tier2) plus egress if the scanner is out-of-region."
+      "notes": "DSPM S3 scanning really costs GET requests (Requests-Tier2) plus egress if the scanner is out-of-region. S3 Standard has no retrieval fee. Retired 2026-08-10 when DSPM moved to s3-get-10k + s3-put-10k.",
+      "retired": true
     },
     {
       "meterId": "ecr-data-transfer",
@@ -590,7 +593,8 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://aws.amazon.com/ecr/pricing/",
-      "notes": "Numerically right, wrongly attributed. Same-region pulls are free, which the estimator already models via crossRegionPull=false."
+      "notes": "Numerically right, wrongly attributed. Same-region pulls are free, which the estimator already models via crossRegionPull=false. The AmazonECR offer has no data-transfer meter. Retired 2026-08-10 \u2014 registry scanning now bills aws-egress-gb directly, so the number is no longer attributed to the wrong service.",
+      "retired": true
     },
     {
       "meterId": "pubsub-message-delivery",
@@ -762,7 +766,8 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://cloud.google.com/storage/pricing",
-      "notes": "DSPM GCS scanning should be priced as Class B ops (gcs-class-b-10k) plus egress only when the scanner is out-of-region."
+      "notes": "DSPM GCS scanning should be priced as Class B ops (gcs-class-b-10k) plus egress only when the scanner is out-of-region. Cloud Storage has no per-GB read charge. Retired 2026-08-10 when DSPM moved to gcs-class-b-10k + gcs-class-a-10k.",
+      "retired": true
     },
     {
       "meterId": "artifact-registry-egress",
@@ -782,7 +787,8 @@
       },
       "verifiedAt": "2026-08-10",
       "sourceUrl": "https://cloud.google.com/artifact-registry/pricing",
-      "notes": "Numerically right for cross-region/internet pulls, wrongly attributed to the Artifact Registry price list."
+      "notes": "Numerically right for cross-region/internet pulls, wrongly attributed to the Artifact Registry price list. Artifact Registry egress bills at standard network rates. Retired 2026-08-10 \u2014 registry scanning now bills gcp-egress-gb directly.",
+      "retired": true
     },
     {
       "meterId": "gce-outpost-scanner",

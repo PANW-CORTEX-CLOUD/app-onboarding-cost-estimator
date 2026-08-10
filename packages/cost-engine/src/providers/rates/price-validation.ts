@@ -59,6 +59,18 @@ export interface PriceValidationRow {
   sourceUrl: string;
   /** Set to "ops" when the price is per-operation and must not be multiplied by GB. */
   dimension?: string;
+  /**
+   * True when nothing bills this meter any more.
+   *
+   * A retired row is deliberately kept rather than deleted: most of these are
+   * meters this repo invented for a charge the vendor does not levy, and the
+   * row is the record of that finding. Keeping it means the crawler goes on
+   * re-checking the claim, so if a vendor ever does introduce such a meter we
+   * find out instead of rediscovering it by accident. Retired rows are exempt
+   * from the rate-file binding (they have no price to bind to) but not from
+   * re-verification.
+   */
+  retired?: boolean;
   notes?: string;
 }
 
@@ -167,6 +179,7 @@ export function parsePriceValidationLedger(raw: unknown): PriceValidationLedger 
         typeof m.blockedReason === "string" ? m.blockedReason : undefined,
       sourceUrl: m.sourceUrl,
       dimension: typeof m.dimension === "string" ? m.dimension : undefined,
+      retired: m.retired === true,
       notes: typeof m.notes === "string" ? m.notes : undefined,
     });
   }
@@ -381,6 +394,16 @@ export function assertFallbackMatchesLedger(
 
   const fileIds = new Set(doc.meters.map((m) => m.meterId));
   for (const row of ledgerForProvider) {
+    if (row.retired) {
+      // A retired meter must be gone from the rate file, not merely unused —
+      // an unused price is an invitation for something to start billing it.
+      if (fileIds.has(row.meterId)) {
+        problems.push(
+          `${doc.provider}/${row.meterId}: marked retired but still priced in fallback-prices.json`,
+        );
+      }
+      continue;
+    }
     if (!fileIds.has(row.meterId)) {
       problems.push(
         `${doc.provider}/${row.meterId}: in the ledger but missing from fallback-prices.json`,

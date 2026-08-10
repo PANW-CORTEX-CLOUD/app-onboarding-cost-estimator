@@ -45,7 +45,7 @@ const azureRates: RateCard = {
     "managed-disk-snapshot": 0.05,
     "vm-outpost-scanner": 0.096,
     "blob-data-read-ops": 0.004,
-    "acr-pull-bandwidth": 0.01,
+    "azure-egress-gb": 0.087,
     "functions-scan-ops": 0.002,
     "azure-egress-gb": 0.087,
   },

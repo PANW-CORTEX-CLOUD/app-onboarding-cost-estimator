@@ -23,14 +23,13 @@ pnpm tf:manifest             # re-derive what the Terraform deploys
 
 | | Count | Meaning |
 | --- | --- | --- |
-| **verified** | 26 | The vendor publishes this exact price for this exact unit. |
-| **proxy** | 2 | The number is officially correct but comes from a different service's price list than the meter claims. |
-| **unsupported-meter** | 4 | The vendor publishes no such meter. The number was invented by this repo. |
-| **unverified** | 1 | Cannot be checked as written. |
+| **verified** | 27 | The vendor publishes this exact price for this exact unit. |
+| **retired** | 6 | Billed by nothing. Kept as a record so the claim stays falsifiable and the crawler keeps re-checking it. |
+| **still billed but not vendor-backed** | 2 | Both GCP: `pd-snapshot-storage`, `gce-outpost-scanner`. |
 
-The 7 non-verified meters are forced to Low-confidence bands and each raises a
-named warning on any estimate that touches them. None of them can produce a
-High-confidence figure any more.
+Of the 34 ledger rows, 6 are retired and no longer priced at all. Of what
+remains billable, **Azure and AWS are fully vendor-verified**; the two GCP
+exceptions are forced to Low-confidence bands and each raises a named warning.
 
 ### Prices that were wrong and are now fixed
 
@@ -95,16 +94,22 @@ high because it charged per gigabyte for something billed per call.
 `avgObjectSizeMB` is a new input on the API and in the driver step, defaulting
 to 4 MB and always stated in the estimate notes.
 
-### P1 — Registry scan on Azure has no priceable model
+### ~~P1 — Registry scan has no priceable model~~ — fixed 2026-08-10
 
-`acr-pull-bandwidth` cannot be fixed by finding a better number, because the
-meter does not exist. Model what ACR actually charges instead:
+Not by finding a better number, but by establishing there is no charge to find.
+Microsoft states plainly that pulling images carries **no per-GB fee**: an ACR
+bill is the registry SKU plus storage plus standard network egress. The SKU and
+storage are infrastructure the customer already runs, so onboarding Cortex adds
+nothing there — only egress, and only when the scanner is out-of-region.
 
-- a Registry Unit per day for the SKU tier (Standard $0.6666/day), and
-- egress via `azure-egress-gb` **only** when `crossRegionPull` is true.
+`acr-pull-bandwidth`, `ecr-data-transfer` and `artifact-registry-egress` are
+retired. Registry scanning now bills `azure-egress-gb` / `aws-egress-gb` /
+`gcp-egress-gb`, all verified, and same-region scanning is $0 — which is what
+actually happens.
 
-The cross-region gate is already implemented and already yields $0 for
-same-region pulls, so the change is confined to the meter choice.
+**Azure and AWS now have no non-verified meters at all.** Every rate either
+cloud can bill has been read from the vendor's own price list. Only GCP retains
+two, both below.
 
 ### P2 — Name the GCP scanner machine type
 

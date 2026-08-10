@@ -44,22 +44,6 @@
       "sourceUrl": "https://cloud.google.com/compute/vm-instance-pricing"
     },
     {
-      "meterId": "gcs-data-read-band",
-      "unit": "GB",
-      "unitPrice": 0.12,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://cloud.google.com/storage/pricing"
-    },
-    {
-      "meterId": "artifact-registry-egress",
-      "unit": "GB",
-      "unitPrice": 0.12,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://cloud.google.com/artifact-registry/pricing"
-    },
-    {
       "meterId": "cloud-run-scan-ops",
       "unit": "million-request",
       "unitPrice": 0.4,

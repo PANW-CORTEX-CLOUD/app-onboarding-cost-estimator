@@ -44,22 +44,6 @@
       "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/virtual-machines/linux/"
     },
     {
-      "meterId": "blob-data-read-ops",
-      "unit": "10k-ops",
-      "unitPrice": 0.004,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/storage/blobs/"
-    },
-    {
-      "meterId": "acr-pull-bandwidth",
-      "unit": "GB",
-      "unitPrice": 0.01,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://azure.microsoft.com/en-us/pricing/details/container-registry/"
-    },
-    {
       "meterId": "functions-scan-ops",
       "unit": "million-exec",
       "unitPrice": 0.2,

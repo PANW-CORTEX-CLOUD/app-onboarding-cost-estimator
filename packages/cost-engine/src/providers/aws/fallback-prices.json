@@ -44,22 +44,6 @@
       "sourceUrl": "https://aws.amazon.com/ec2/pricing/on-demand/"
     },
     {
-      "meterId": "s3-data-retrieval-band",
-      "unit": "GB",
-      "unitPrice": 0.0004,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://aws.amazon.com/s3/pricing/"
-    },
-    {
-      "meterId": "ecr-data-transfer",
-      "unit": "GB",
-      "unitPrice": 0.09,
-      "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
-      "sourceUrl": "https://aws.amazon.com/ecr/pricing/"
-    },
-    {
       "meterId": "lambda-scan-ops",
       "unit": "million-request",
       "unitPrice": 0.2,

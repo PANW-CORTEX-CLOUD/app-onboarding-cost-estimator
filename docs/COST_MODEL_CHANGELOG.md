@@ -1,5 +1,28 @@
 # Cost model changelog
 
+## 2026-08-10c - registry scanning bills real egress; sizing fails closed
+
+Research settled what a registry scan actually costs: Microsoft states there is
+no per-GB charge for pulling images, and the same holds for ECR and Artifact
+Registry. A registry's SKU and storage are infrastructure the customer already
+runs, so onboarding adds only network egress, and only across regions.
+
+`acr-pull-bandwidth`, `ecr-data-transfer` and `artifact-registry-egress` are
+retired; registry scanning bills the verified egress meters instead. Same-region
+scanning is $0. With this and the DSPM change, **Azure and AWS no longer price
+anything from a number the vendor does not publish**.
+
+Retired meters leave the rate files but keep their ledger rows behind a
+`retired` flag, so the finding stays on the record and the crawler keeps
+re-checking it — if a vendor ever introduces such a meter, we find out.
+
+An enabled capability with no sizing input at all is now refused rather than
+quoted at $0 (`providers/capability-drivers.ts`). An explicit zero is still
+priced, because that is a decision rather than a gap.
+
+No modelVersion bump: retiring an unbilled meter and refusing an unsizeable
+request change no correct total.
+
 ## 2026-08-10b - DSPM priced per operation, not per gigabyte
 
 DSPM multiplied an estate size in GB by a per-10,000-operations rate. Object
