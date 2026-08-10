@@ -186,7 +186,7 @@ Catalog API needs a key.
 Findings from a sweep for silent fallbacks, drift, loose validation and
 back-compat shims.
 
-## REQ-5 — Defaults must be named, centralised and visible  `doing` (T-5.1.1 done)
+## REQ-5 — Defaults must be named, centralised and visible  `done`
 
 `create-estimate.ts` scatters unexplained literals: `730`, `10`, `4`, `24`,
 `1`, `0.01`. A reader cannot tell which are conventions, which are guesses, and
@@ -195,9 +195,21 @@ which would change a customer's quote.
 - **T-5.1.1** `done` Move them into a documented `estimator-defaults.ts` with a
   sentence per constant explaining where the number comes from.
   *Tests*: defaults are re-exported and asserted; totals unchanged.
-- **T-5.1.2** `todo` Distinguish *convention* defaults (730 hours) from
-  *assumption* defaults (10 accounts, 4 scans). Assumptions should appear in the
-  estimate's assumption snapshot so the customer sees what was guessed.
+- **T-5.1.2** `done` The engine now records every default it *substituted* and
+  returns them as `appliedDefaults`, each tagged `convention` (730 hours — a
+  billing definition, identical for everyone) or `assumption` (10 accounts,
+  4 MB objects — a guess about this estate that changes the quote), with a
+  rationale.
+  The UI renders whatever it is given rather than a hardcoded list, so a new
+  engine default appears without anyone editing a widget. `DefaultsTracker`
+  throws if a default has no metadata, so an unexplained number cannot reach a
+  customer.
+  *Tests*: supplied values are not reported; **edge** an explicit zero counts as
+  the customer's choice; **edge** a field resolved by several capabilities is
+  reported once; **edge** a default with no metadata throws; **edge** the UI
+  renders a default it has never heard of; **e2e** the API reports 730 h as a
+  convention and 10 accounts as an assumption, and supplying accountCount
+  removes it from the list.
 
 ## REQ-6 — A missing input must not silently become zero  `done`
 
@@ -246,6 +258,22 @@ engine is a drift waiting to happen. Prefer importing the engine.
 referenced nowhere at all. See the dead-code appendix.
 
 ---
+
+## Sweep record
+
+A standing sweep for silent fallbacks, drift, loose validation and back-compat
+shims. Recorded so a later reader can tell "checked and clean" from "never
+looked".
+
+| Date | Pattern | Result |
+| --- | --- | --- |
+| 2026-08-10 | Duplicated invariants (same rule in a gate script and the engine) | **Found and fixed** — the ledger binding rule existed twice and had already drifted (REQ-9). Now imported. |
+| 2026-08-10 | Silent degradation by data source | **Found and fixed** — tiering vanished on live/cached rates (REQ-10). |
+| 2026-08-10 | Absent coerced to zero | **Found and fixed** (REQ-6). |
+| 2026-08-10 | Swallowed errors (`catch {}`) | Checked all 7. All legitimate: each converts a parse failure into an explicit typed error or Problem response. No change. |
+| 2026-08-10 | `as any` / unchecked casts | None in engine, API or web. |
+| 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. |
+| 2026-08-10 | Unexplained magic numbers | Moved to `estimator-defaults.ts` with provenance per constant (REQ-5). |
 
 # Part C — Ideation
 

@@ -219,6 +219,7 @@ export function createApp(): Hono {
         warnings: estimate.warnings,
         tfMode: estimate.tfMode,
         excludedCapabilities: estimate.excludedCapabilities,
+        appliedDefaults: estimate.appliedDefaults,
         resolvedVolume: estimate.resolvedVolume,
       });
     } catch (e) {

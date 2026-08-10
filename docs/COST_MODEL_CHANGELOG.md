@@ -1,5 +1,20 @@
 # Cost model changelog
 
+## 2026-08-10e - estimates say which numbers they guessed
+
+A default nobody sees is a guess presented as a fact. The results panel
+hardcoded four assumptions, so a reader could not tell their own inputs from the
+tool's, and any new engine default stayed invisible until someone edited that
+widget.
+
+Estimates now return `appliedDefaults`: every value substituted because the
+request supplied none, tagged `convention` (730 hours — definitional) or
+`assumption` (10 accounts, 4 MB objects — a guess that changes the quote), each
+with a rationale. The UI renders whatever it is given, so it cannot drift, and
+the tracker refuses a default that has no explanation attached.
+
+No pricing change: this reports what was already happening.
+
 ## 2026-08-10d - graduated tiers, and a rate source that changed the answer
 
 Storage and egress are billed as ladders, not flat rates. Four meters now carry

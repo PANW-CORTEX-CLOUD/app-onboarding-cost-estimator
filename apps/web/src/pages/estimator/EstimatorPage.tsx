@@ -1804,6 +1804,7 @@ export function EstimatorPage() {
                     />
                     {estimate ? (
                       <ResultsAssumptionsSnapshot
+                        appliedDefaults={estimate?.appliedDefaults}
                         monthHours={monthHours}
                         assumedEventBytes={assumedEventBytes}
                         avgStoredGB={avgStoredGB}
