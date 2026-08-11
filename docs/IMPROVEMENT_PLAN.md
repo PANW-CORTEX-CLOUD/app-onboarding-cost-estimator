@@ -169,24 +169,33 @@ still produce numbers.
   docs. A plan note that a price "varies by underlying resource type" is a
   hypothesis to verify, not a spec to implement.
 
-### UC-2.3 — The GCP scanner VM is a named SKU
+### UC-2.3 — The GCP scanner VM is a named SKU  `done`
 
-- **T-2.3.1** `blocked` (was `todo`) Name the machine type behind
-  `gce-outpost-scanner` and record the quote, clearing the last `unverified`
-  ledger row and its `blockedReason`.
-  Blocked for the same reason: the candidate (`e2-standard-2`, as the analogue
-  of Azure D2s v3 / AWS t3.medium) and its on-demand rate must come from
-  official GCP pricing, not from recall. Note when unblocking that D2s v3 is
-  2 vCPU/8 GB while t3.medium is 2 vCPU/4 GB, so "the analogue" is already
-  ambiguous and the choice needs stating, not assuming.
-  *Tests*: ledger gate stops reporting a blocked row.
+(Two copies of this task existed after a cross-session merge — the numbering
+collision the header warns about. Consolidated here.)
 
-### UC-2.3 — The GCP scanner VM is a named SKU
-
-- **T-2.3.1** `todo` Name the machine type behind `gce-outpost-scanner`
-  (e2-standard-2 is the analogue of Azure D2s v3 and AWS t3.medium) and record
-  the quote. Clears the last `unverified` row and its `blockedReason`.
-  *Tests*: ledger gate stops reporting a blocked row.
+- **T-2.3.1** `done` Named the scanner machine type **e2-standard-2**
+  (2 vCPU / 8 GiB) — the GCP analogue of Azure D2s v3 (2 vCPU / 8 GB); AWS
+  t3.medium is smaller (2 vCPU / 4 GB), so the choice is stated rather than
+  assumed, and it matches the size the other two clouds already price.
+  Corrected the value from $0.0475/hour to the **on-demand** us-central1 list
+  rate **$0.067/hour**: the old number was neither on-demand ($0.067) nor spot
+  ($0.0402) but the sustained-use-discounted rate, which is wrong for an
+  ephemeral VM billed `rate × scansPerMonth × hoursPerScan` — a couple of hours
+  per scan is far below the sustained-use threshold. Recorded `machineType` in
+  the ledger row and named the SKU in a code comment on
+  `GCP_ADS_OUTPOST_METER`.
+  The row stays `unverified` (Low confidence + warning on every ADS Outpost
+  line) because $0.067 is corroborated by two secondary sources
+  (gcloud-compute.com, instances.vantage.sh) but not a machine-readable
+  official feed — GCP's pricing page is client-rendered. The "no machine type"
+  blocker is cleared; only the crawl limitation remains (REQ-4).
+  *Tests*: ledger binding + fallback-age gates pass at 0.067; the three ADS/DSPM
+  fixtures using the old synthetic 0.0475 were updated to 0.067 (their
+  assertions test `computeCost > 0` / `=== 0`, not the literal rate).
+  *Learning*: for an ephemeral resource, the honest rate is **on-demand**, not
+  the sustained-use or committed-use figure a pricing page may headline — the
+  discount encodes a usage commitment the workload does not make.
 
 ## REQ-3 — Volume tiers and free allowances must not be silently ignored  `done`
 

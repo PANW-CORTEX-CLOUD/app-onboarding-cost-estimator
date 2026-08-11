@@ -52,7 +52,7 @@ const gcpRates: RateCard = {
   unitPrices: {
     "gcs-class-b-10k": 0.004,
     "gcs-class-a-10k": 0.05,
-    "gce-outpost-scanner": 0.0475,
+    "gce-outpost-scanner": 0.067,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
 };

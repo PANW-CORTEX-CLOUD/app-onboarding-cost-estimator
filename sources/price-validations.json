@@ -865,22 +865,24 @@
       "meterId": "gce-outpost-scanner",
       "provider": "gcp",
       "region": "us-central1",
-      "claimedUnitPrice": 0.0475,
+      "claimedUnitPrice": 0.067,
       "claimedUnit": "hour",
       "verdict": "unverified",
       "method": "official-doc",
+      "machineType": "e2-standard-2",
       "probe": {
-        "quote": "pending \u2014 needs a named machine type before it can be checked"
+        "quote": "e2-standard-2 (2 vCPU, 8 GiB) on-demand list price us-central1 = $0.067/hour; spot $0.0402; the ephemeral per-scan VM is billed at on-demand, not the sustained-use rate."
       },
       "observed": {
-        "unitPrice": null,
-        "note": "Crawl attempted 2026-08-10 against cloud.google.com/compute/vm-instance-pricing: no machine-readable rate available and the repo records no machine type for the 0.0475/hour claim."
+        "unitPrice": 0.067,
+        "unitOfMeasure": "hour",
+        "note": "SKU NAMED + VALUE CORRECTED 2026-08-11. The scanner machine type is now e2-standard-2 (2 vCPU / 8 GiB), the GCP analogue of Azure D2s v3 (2 vCPU / 8 GB); AWS t3.medium is smaller (2 vCPU / 4 GB). On-demand us-central1 list = $0.067/hour (corroborated by gcloud-compute.com and instances.vantage.sh). The prior 0.0475/hour was neither the on-demand ($0.067) nor spot ($0.0402) rate \u2014 it approximated the sustained-use-discounted rate (~0.067 x 0.71), which is WRONG for this meter: the outpost scanner runs a couple of hours per scan (computeCost = rate x scansPerMonth x hoursPerScan), far below the sustained-use threshold, so it is billed at on-demand."
       },
       "verifiedAt": null,
       "sourceUrl": "https://cloud.google.com/compute/vm-instance-pricing",
-      "notes": "Pick and document a scanner machine type (as Azure does with D2s v3 and AWS with t3.medium), then verify.",
-      "lastAttemptedAt": "2026-08-10",
-      "blockedReason": "Google publishes no keyless machine-readable price feed (the Cloud Billing Catalog API requires an API key) and the pricing pages render their tables client-side, so no automated probe can read this rate. Azure and AWS name a scanner SKU (D2s v3 / t3.medium); GCP must name one too before this can be checked."
+      "notes": "Machine type named (e2-standard-2) and value corrected to the on-demand us-central1 list rate. Stays 'unverified' (Low confidence + warning on every ADS Outpost line) only because the figure comes from corroborating secondary sources, not a machine-readable official feed \u2014 GCP's pricing page is client-rendered and its Cloud Billing Catalog needs an API key. The 'needs a named machine type' blocker is now cleared.",
+      "lastAttemptedAt": "2026-08-11",
+      "blockedReason": "cloud.google.com/compute/vm-instance-pricing renders its price table client-side and the Cloud Billing Catalog API requires an API key, so no keyless automated probe can confirm the exact 0.067/hour figure for e2-standard-2. The machine type is now named (was the prior blocker); only machine-readable confirmation of the rate remains."
     }
   ]
 }

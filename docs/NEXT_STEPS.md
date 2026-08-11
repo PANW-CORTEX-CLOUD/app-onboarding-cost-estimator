@@ -126,12 +126,18 @@ actually happens.
 cloud can bill has been read from the vendor's own price list. Only GCP retains
 two, both below.
 
-### P2 — Name the GCP scanner machine type
+### P2 — Name the GCP scanner machine type  ✓ done 2026-08-11
 
-`gce-outpost-scanner` claims $0.0475/hour with no machine type recorded, so no
-probe can confirm or refute it. Azure names D2s v3 and AWS names t3.medium;
-GCP must name one too (e2-standard-2 is the closest analogue at 2 vCPU / 8 GB).
-This is the only `unverified` row and the only one carrying a `blockedReason`.
+`gce-outpost-scanner` is now named **e2-standard-2** (2 vCPU / 8 GiB), the GCP
+analogue of Azure D2s v3; AWS t3.medium is smaller (2 vCPU / 4 GB). Its value
+was corrected from $0.0475/hour to the **on-demand** us-central1 list rate
+**$0.067/hour** — the old figure was neither on-demand ($0.067) nor spot
+($0.0402) but the sustained-use-discounted rate, which is wrong for a VM that
+runs only a couple of hours per scan (far below the sustained-use threshold).
+The row stays `unverified` (Low confidence + warning) because the figure is
+corroborated by secondary sources but not a machine-readable official feed —
+GCP's pricing page is client-rendered. The "no machine type" blocker is
+cleared; only the crawl limitation (P3) remains.
 
 ### P3 — GCP prices cannot be crawled at all
 
