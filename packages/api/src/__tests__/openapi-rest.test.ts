@@ -194,29 +194,50 @@ describe("package 15 — OpenAPI REST", () => {
     expect(res.status).toBe(400);
   });
 
-  it("refreshRates is rate-limited (429)", async () => {
+  it("REQ-6.2: ADS with only one multiplicand driver is a 400 naming the missing field", async () => {
+    // avgUsedDiskGB alone would let vmCount `?? 0` zero the snapshot cost — a
+    // silent $0 quote. The engine's sizing guard refuses it; the API surfaces
+    // that refusal as a 400 whose detail names the exact field to supply,
+    // rather than returning a $0 estimate that looks like a real quote.
     const app = createApp();
-    const body = JSON.stringify({
-      provider: "azure",
-      region: "eastus",
-      forceLive: true,
+    const res = await app.request("/v1/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "aws",
+        region: "us-east-1",
+        capabilities: { adsCloud: true },
+        volume: { avgUsedDiskGB: 100 },
+      }),
     });
-    let saw429 = false;
-    for (let i = 0; i < 15; i++) {
-      const res = await app.request("/v1/rates/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-      if (res.status === 429) {
-        saw429 = true;
-        const problem = await res.json();
-        expect(problem.status).toBe(429);
-        break;
-      }
-      expect([200, 429]).toContain(res.status);
-    }
-    expect(saw429).toBe(true);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { detail?: string };
+    expect(body.detail).toMatch(/ads_cloud \(needs: VM count\)/);
+  });
+
+  it("refreshRates returns 429 (problem+json) once the limiter is exhausted", async () => {
+    const app = createApp();
+    // Exhaust the limiter directly on the key the route uses ("global"), so
+    // the FIRST HTTP call is already over the limit. The previous version
+    // looped up to 15 live POSTs to trip the limiter, and each pre-429
+    // request drove getRates(forceLive:true) at the real network — the route
+    // has no offline seam — so the test flaked with a 60s timeout under
+    // parallel suite load. Pre-exhausting asserts the same 429 HTTP path with
+    // zero network fetches. The limiter's counting/window behaviour is covered
+    // directly in rate-limit.test.ts.
+    // TODO(REQ-15): give createApp a rates seam so the /rates and /estimates
+    // routes can be driven offline in tests instead of relying on the limiter
+    // short-circuit; today only the 429 path can be tested without the network.
+    for (let i = 0; i < 10; i++) refreshRatesLimiter.check("global");
+    const res = await app.request("/v1/rates/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "azure", region: "eastus", forceLive: true }),
+    });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    const problem = await res.json();
+    expect(problem.status).toBe(429);
   });
 
   it("GET /v1/capabilities requires provider", async () => {

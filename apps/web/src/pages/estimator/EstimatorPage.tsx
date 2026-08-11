@@ -565,6 +565,12 @@ export function EstimatorPage() {
                 dataEstateGB,
                 pctScanned,
                 scansPerMonth,
+                // vmCount + avgUsedDiskGB are ADS's required sizing drivers
+                // (capability-drivers.ts REQ-6.2). Omitting them here made every
+                // provider column error when ADS was enabled; the main-run and
+                // tier-compare paths both send them, so include them for parity.
+                vmCount,
+                avgUsedDiskGB,
                 imageCount,
                 avgImageGB,
                 packageCount,

@@ -54,6 +54,7 @@ to find one.
 | [REQ-12](#req-12--a-rate-s-source-must-not-change-the-answer) | A rate's source must not change the answer | `done` |
 | [REQ-13](#req-13--the-api-must-be-debuggable-without-adding-console-log) | The API must be debuggable without adding console.log | `doing` |
 | [REQ-14](#req-14--a-test-must-not-be-able-to-silently-not-run) | A test must not be able to silently not-run | `done` |
+| [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `doing` |
 
 ---
 
@@ -311,6 +312,45 @@ distinction between *absent* and *deliberately zero*.
   zero — two fail-closed rules compose, strictest wins); **edge** as-deployed
   drops an undeployed capability before the guard can reject it; **e2e** the
   API returns a 400 naming the missing fields.
+
+### REQ-6.2 — Every multiplicand driver is required, not just one  `done`
+
+*Requirement.* When a capability's cost is a **product** of several sizing
+drivers, supplying only one of them must not silently zero the estimate.
+
+*Use case.* An operator enables **ADS Cloud**, types the average used disk
+(`avgUsedDiskGB = 100`), and forgets the VM count. ADS prices
+`snapshotCost = vmCount × scansPerMonth × prorate(avgUsedDiskGB)`, so the
+missing `vmCount ?? 0` collapses the whole snapshot line to **$0** — a real
+quote-looking zero for a capability the operator explicitly turned on. This was
+possible because T-6.1.1's guard accepted "at least one" driver; both ADS
+drivers are multiplicands with no documented default, so "at least one" is too
+weak. *(Found by probing the guard against reality, not from the spec.)*
+
+*Fix.* `CAPABILITY_SIZING_DRIVERS` now means **all listed drivers are required**
+(explicit `0` still counts as a decision). Fields that carry a documented
+default (`scansPerMonth`, `pctScanned`, `avgObjectSizeMB`, …) were never listed
+as drivers, so no legitimate partial input is newly rejected. `registry` lists
+`imageCount` only: its second field `avgImageGB` feeds the cross-region pull
+path, and `crossRegionPull` is hard-wired `false`, so requiring it would force a
+field that changes no total (TODO at the call site in `create-estimate.ts`).
+
+*Test cases.* unit: ADS with one driver reports the **specific** missing field;
+both present → sized; **edge** an explicit `0` on one driver does not excuse an
+absent other; **edge** registry requires `imageCount`, not `avgImageGB`.
+integration: ADS size-only rejects naming `VM count`; ADS with both prices a
+non-zero snapshot line. **e2e**: `POST /v1/estimates` with `adsCloud` + only
+`avgUsedDiskGB` returns 400 with detail `ads_cloud (needs: VM count)`.
+
+*Layer note.* The rule lives in the engine, not the Zod schema:
+[`z.optional()` cannot distinguish absent from `undefined`](https://github.com/colinhacks/zod/issues/1628),
+and a Zod `.superRefine()` would duplicate the capability→driver map into a
+second source of truth — the exact drift this repo keeps deleting. The engine
+owns the map; the API surfaces its throw as a 400.
+
+*Follow-on found.* The provider-compare request in `EstimatorPage.tsx` omitted
+`vmCount`/`avgUsedDiskGB`, so comparing providers with ADS on errored every
+column. Fixed for parity with the main-run and tier-compare paths.
 
 ## REQ-7 — The engine must be debuggable without a debugger  `doing` (T-7.1.1 done)
 
@@ -577,6 +617,41 @@ trap; all files happened to be listed, so it was latent, not yet firing.
   to happen. Glob the directory, and add a test that fails if anyone reverts to
   enumeration — the guarantee has to live in a test, not a comment.
 
+## REQ-15 — The API must be testable without the network  `doing`
+
+Every `packages/api` route that prices anything calls `getRates` with the
+default (live) adapters. `createApp()` exposes no seam to inject offline
+adapters, so an HTTP-level test can only avoid the network by not reaching the
+pricing path at all. This is a test-hygiene gap, not a product bug — but it
+made one test flaky.
+
+### UC-15.1 — The rate-limit test must not depend on the network
+
+- **T-15.1.1** `done` `refreshRates is rate-limited` looped up to 15 live
+  `POST /v1/rates/refresh` calls (each `forceLive:true` → a real fetch) to trip
+  the limiter, and timed out at 60s under parallel suite load while passing in
+  isolation. Rewrote it to exhaust `refreshRatesLimiter` directly on the
+  route's key first, so the first HTTP call already 429s with zero fetches, and
+  moved the limiter's counting/window/retry-after coverage into a dedicated
+  `rate-limit.test.ts` unit test (previously that behaviour was only exercised
+  through the flaky HTTP loop).
+  *Tests*: `rate-limit.test.ts` — allow-then-block, per-key isolation, window
+  expiry (**edge** exactly one window later), retry-after math, reset;
+  `openapi-rest.test.ts` — one HTTP call returns 429 + `Retry-After` + a
+  problem+json body. Both network-free.
+
+### UC-15.2 — Any route that prices should be drivable offline  `todo`
+
+- **T-15.2.1** `todo` Give `createApp()` (or the routes) an injectable rates
+  seam — the same `ratesOptions`/adapters `createEstimate` already accepts —
+  so `/v1/rates`, `/v1/rates/refresh` and `/v1/estimates` can be tested against
+  fallback rates instead of the live feed. Marked in code as `TODO(REQ-15)` at
+  the rate-limit test. Until then only the 429 short-circuit is testable
+  offline.
+  *Tests*: an estimate POST returns a deterministic total from injected
+  fallback adapters with no network; **edge** an injected adapter that throws
+  surfaces as a 5xx/problem+json, not a hang.
+
 ---
 
 ## Sweep record
@@ -590,13 +665,15 @@ looked".
 | 2026-08-10 | Duplicated invariants (same rule in a gate script and the engine) | **Found and fixed** — the ledger binding rule existed twice and had already drifted (REQ-9). Now imported. |
 | 2026-08-10 | Silent degradation by data source | **Found and fixed** — tiering vanished on live/cached rates (REQ-10). |
 | 2026-08-10 | Absent coerced to zero | **Found and fixed** (REQ-6). |
+| 2026-08-11 | Absent coerced to zero — multiplicand grain | **Found and fixed** (REQ-6.2). The REQ-6 guard accepted "at least one" driver, but ADS's two drivers are multiplicands: supplying only one let the other `?? 0` produce a silent $0. Guard now requires every listed driver; probed against the real engine to confirm the gap and the fix. |
 | 2026-08-10 | Swallowed errors (`catch {}`) | Checked all 7. All legitimate: each converts a parse failure into an explicit typed error or Problem response. No change. |
 | 2026-08-10 | `as any` / unchecked casts | None in engine, API or web. |
-| 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. |
+| 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. **Updated 2026-08-11:** the ADS `?? 0`s are now fully guard-protected (REQ-6.2 requires both drivers). One inert case remains and is flagged with a TODO: `avgImageGB ?? 0` in the registry block feeds only the disabled cross-region pull path, so it changes no total. |
 | 2026-08-10 | Unexplained magic numbers | Moved to `estimator-defaults.ts` with provenance per constant (REQ-5). |
 | 2026-08-11 | Tests that pin a fixture date but not the clock | **Found and fixed — third instance of this class.** `rates-module.test.ts` pinned `now` on the *adapters* but not on `getRates`, which stamps `ageDays` with its own clock. The assertion compared a wall-clock `ageDays` against a `NOW`-derived one; they agreed only while the real date shared a day with the fixture's `capturedAt`, then started failing the first run after midnight UTC. Confirmed pre-existing by stashing all in-flight work and reproducing on clean `HEAD`. The sibling `price-freshness.test.ts` already pinned `now` at every call site, so the fix matched an existing pattern rather than inventing one. Swept the remaining `getRates`/`createEstimate` test call sites: no others unpinned. |
 | 2026-08-11 | Unit tests that reach the live network for rates | **Found and fixed.** `create-estimate-mvp.test.ts` (all 5 `createEstimate` calls) and `tf-audit-reconciliation.test.ts` (the discovery-only case) had no offline rate seam, so each fell through to a live `getRates` fetch. The discovery-only assertion — which does no pricing math at all — timed out at 5s under full-suite load, presenting as a failure in unrelated in-flight work. Threaded the established `OFFLINE_RATES` seam (forceFallback adapters + fresh cache + pinned `now`) through both; test time dropped from 5.4s-with-timeout to ~35ms and is now deterministic. Swept every `createEstimate`-calling test: the remaining apparent gaps (`price-validation`, `capability-drivers`) spread a shared already-seamed `inputs`/`base` object, so they were never live. *Rule*: a unit test must never depend on `getRates` reaching the network — inject `ratesOptions` with `forceFallback` adapters, even when the assertion is purely structural, because a $0/no-op path still makes the fetch. |
 | 2026-08-11 | Config that enumerates test files by name (silent no-op) | **Found and fixed (REQ-14).** `vitest.config.ts` hand-listed the two shared test dirs file-by-file; a new file in either would run nowhere. A `TODO(test-discovery)` had flagged it. Globbed both dirs and added `test-discovery.test.ts` to fail if anyone reverts to enumeration. Latent, not yet firing — all files were listed — but one added test away from a false green. |
+| 2026-08-11 | API tests reaching the live network (REQ-15) | **Found and fixed the acute case.** `refreshRates is rate-limited` looped up to 15 live refresh POSTs and timed out under parallel load (passed in isolation). Rewrote it to pre-exhaust the limiter (0 fetches) and moved counting coverage to a unit test. The underlying gap — `createApp` has no rates seam, so pricing routes can only be tested live — is tracked as REQ-15 T-15.2.1 with a `TODO(REQ-15)` marker. |
 | 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*
@@ -618,6 +695,7 @@ commitments. Each notes what would have to be true to make it worth doing.
 | Confidence-weighted totals | A total that mixes a verified Event Hubs line with an invented ACR line reads as one number. Weighting, or splitting the total into *vendor-backed* and *modelled*, keeps the honesty visible in the headline. | Modelled capabilities stay in the product. |
 | Per-line "show the arithmetic" | The notes now carry object and operation counts; rendering them under each line removes the last reason to read the source. | REQ-1 ships. |
 | Ledger freshness badge in the UI | The engine knows each rate's age; the UI still shows one global banner. | Cheap once verification reaches the response, which it now does. |
+| Client-side sizing pre-flight | The engine now rejects an enabled capability that is missing a required driver (REQ-6.2), surfaced as a 400. The web form could run the same `findUnsizedCapabilities` rule *before* Run and highlight the empty field inline, so the operator never sees a server error for something the form already knows. The rule lives in the engine; exposing it to the UI keeps one source of truth. | The capability→driver map is worth exposing to `apps/web` (today the web layer never imports the engine directly — this would be the first case, or the map gets mirrored into a shared contract). |
 
 ## Mid term (months) — close the loop with reality
 
@@ -673,3 +751,5 @@ unilateral delete.
 | `loadLastShareState` (+ `readLocalJson`) | `shared/lib/safe-storage.ts` | The read-back half of a write/read pair: `saveLastShareState` **is** called (`EstimatorPage.tsx` `onCopyShareLink`, as a local backup whenever a share link is copied), but nothing ever calls `loadLastShareState` to restore it — e.g. as a fallback when the `?s=` URL param is missing or truncated. Looks like a safety-net feature that shipped half-wired: write path done, read/restore path never connected. | **FINISH** (call it during bootstrap when no `?s=` param is present) **or DELETE** (drop the read half and `readLocalJson` if the recovery UX isn't wanted) — a small, cheap decision either way. |
 | `AWS_TF_PRESENT` / `GCP_TF_PRESENT` | `providers/{aws,gcp}/capability-meter-map.ts` | Both hardcoded `false`, re-exported publicly, referenced only by their own declaration, the package re-export, and a test that asserts `toBe(false)`. No conditional anywhere reads either flag — `tf-honesty-warnings.ts` reimplements the same "AWS/GCP have no TF inventory" fact via a hardcoded provider-name check instead of consulting these flags. Inert today because both providers' Terraform readiness genuinely is "not yet" (see `docs/CLOUD_COST_MODEL.md`'s provider-readiness table — this is intentional placeholder state, not a mistake), but the flags currently do nothing. | **UNCLEAR** — either wire `tf-honesty-warnings.ts` to branch on the flag (so it becomes meaningful the day AWS/GCP Terraform lands) or remove the flags and keep the hardcoded check. Lower priority than the other three rows. |
 | `capabilityForAffectsField` | `shared/model/tf-grounding.ts` | Zero references anywhere, including within its own file. `shared/lib/affects-chips.ts` (a later addition per its own package-number comment) independently reimplements the same "which volume field maps to which capability/meters" concept with its own field list. The constant it reads (`AUDIT_AFFECTS_FIELD_IDS`) is still used elsewhere — only the function itself is dead. | **DELETE.** High confidence — superseded by `affects-chips.ts`, zero references, the one thing it reads is used elsewhere so nothing else breaks. |
+| `CAPABILITY_LABELS` | `widgets/CapabilityToggles/CapabilityToggles.tsx` | Already carries an `@deprecated` tag ("Prefer `capabilityLabel()` — kept for callers expecting short names"), but an export-usage cross-reference across all three packages + `apps/web` finds **zero callers** — the migration it was left as a bridge for is complete. It only calls `capabilityLabel()` per key, so deleting it removes a table nothing reads. | **DELETE.** High confidence — self-declared deprecated, zero references. Found in the 2026-08-11 back-compat sweep. |
+| `DeprecatedForce` query param | `openapi/openapi.yaml` (`/rates/refresh`) → generated `openapi.types.ts` | A `deprecated: true` query parameter documented as a "Deprecated no-op; use body.forceLive". The route reads `forceLive` from the JSON body; the query param does nothing, and no client (`apps/web` or tests) ever sends it. A pure backward-compat husk in the API contract with no senders to break. | **DELETE** from `openapi.yaml` and regenerate types — or keep only if an external (non-`apps/web`) client is known to still pass it, which nothing in-repo does. Found in the 2026-08-11 back-compat sweep. |
