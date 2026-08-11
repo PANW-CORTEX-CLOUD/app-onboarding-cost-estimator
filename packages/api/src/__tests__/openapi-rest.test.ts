@@ -227,7 +227,7 @@ describe("package 15 — OpenAPI REST", () => {
     // counting/window behaviour is covered directly in rate-limit.test.ts, and
     // the offline seam that removes the underlying network dependency from the
     // pricing routes now exists (REQ-15 T-15.2.1, exercised in
-    // estimate-offline.test.ts and app-offline-seam.test.ts).
+    // app-offline-seam.test.ts).
     for (let i = 0; i < 10; i++) refreshRatesLimiter.check("global");
     const res = await app.request("/v1/rates/refresh", {
       method: "POST",
