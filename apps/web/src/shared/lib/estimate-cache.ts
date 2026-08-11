@@ -73,10 +73,12 @@ export function saveEstimateCache(entry: CachedEstimate): void {
 /**
  * Read back the last cached estimate. There is no time-based expiry here —
  * "stale" is judged elsewhere from `ratesAsOf`/`modelVersion` on the cached
- * estimate itself, not from `cachedAt`. The only invalidation this function
- * does is a provider match: since the cache holds one entry, an estimate
- * cached for a different provider is treated as absent (`null`) rather than
- * returned as a mismatched fallback.
+ * estimate itself, not from `cachedAt`. Invalidation here is twofold: a provider
+ * match (the cache holds one entry, so an estimate cached for a different
+ * provider is treated as absent), and a structural check that the cached
+ * estimate still has the shape the UI will render (guards persistence drift
+ * across app versions). Either mismatch returns `null` — a cache miss the caller
+ * resolves by re-fetching — rather than a corrupt or mismatched fallback.
  * @param provider When given, only return the cache if it was cached for this provider.
  */
 export function loadEstimateCache(
