@@ -46,13 +46,13 @@ to find one.
 | [REQ-4](#req-4--rate-validation-must-cover-gcp-automatically) | Rate validation must cover GCP automatically | `todo` |
 | [REQ-5](#req-5--defaults-must-be-named-centralised-and-visible) | Defaults must be named, centralised and visible | `done` |
 | [REQ-6](#req-6--a-missing-input-must-not-silently-become-zero) | A missing input must not silently become zero | `done` |
-| [REQ-7](#req-7--the-engine-must-be-debuggable-without-a-debugger) | The engine must be debuggable without a debugger | `doing` |
+| [REQ-7](#req-7--the-engine-must-be-debuggable-without-a-debugger) | The engine must be debuggable without a debugger | `done` |
 | [REQ-8](#req-8--public-surface-should-be-the-surface-we-mean) | Public surface should be the surface we mean | `needs-approval` |
-| [REQ-9](#req-9--one-rule-one-implementation) | One rule, one implementation | `doing` |
-| [REQ-10](#req-10--silent-fallbacks-must-not-defeat-fail-closed-guarantees) | Silent fallbacks must not defeat fail-closed guarantees | `doing` |
+| [REQ-9](#req-9--one-rule-one-implementation) | One rule, one implementation | `done` |
+| [REQ-10](#req-10--silent-fallbacks-must-not-defeat-fail-closed-guarantees) | Silent fallbacks must not defeat fail-closed guarantees | `done` |
 | [REQ-11](#req-11--user-editable-state-must-be-validated-as-strictly-as-the-api-that-consumes-it) | User-editable state must be validated as strictly as the API that consumes it | `done` |
 | [REQ-12](#req-12--a-rate-s-source-must-not-change-the-answer) | A rate's source must not change the answer | `done` |
-| [REQ-13](#req-13--the-api-must-be-debuggable-without-adding-console-log) | The API must be debuggable without adding console.log | `doing` |
+| [REQ-13](#req-13--the-api-must-be-debuggable-without-adding-console-log) | The API must be debuggable without adding console.log | `done` |
 | [REQ-14](#req-14--a-test-must-not-be-able-to-silently-not-run) | A test must not be able to silently not-run | `done` |
 | [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `done` |
 | [REQ-16](#req-16--error-responses-must-carry-the-media-type-the-contract-declares) | Error responses must carry the media type the contract declares | `done` |
@@ -354,7 +354,7 @@ owns the map; the API surfaces its throw as a 400.
 `vmCount`/`avgUsedDiskGB`, so comparing providers with ADS on errored every
 column. Fixed for parity with the main-run and tier-compare paths.
 
-## REQ-7 — The engine must be debuggable without a debugger  `doing` (T-7.1.1 done)
+## REQ-7 — The engine must be debuggable without a debugger  `done`
 
 There is no logging anywhere in the engine or API. Diagnosing a wrong total
 means adding `console.log` and removing it again.
@@ -397,7 +397,7 @@ query URLs stay internal.
 role it plays — signature, vocabulary, or implementation detail — before
 deleting it.
 
-## REQ-10 — Silent fallbacks must not defeat fail-closed guarantees  `doing`
+## REQ-10 — Silent fallbacks must not defeat fail-closed guarantees  `done`
 
 A read-only architecture sweep (silent fallbacks / persistence drift / loose
 validation / back-compat cruft) found this codebase unusually disciplined —
@@ -421,7 +421,7 @@ most findings below are the exceptions, not a pattern.
   checks a few lines below in the same estimators. Now throws.
   *Tests*: `audit-storage.test.ts` "negative avgGB fails closed…".
 
-### UC-10.3 — AWS/GCP "Refresh rates (live)" must either work or say so plainly  `todo`
+### UC-10.3 — AWS/GCP "Refresh rates (live)" must either work or say so plainly  `done`
 
 - **T-10.3.1** `done` AWS's live-rates path is structurally non-functional
   (the real `index.json` is offers-shaped; the code expects
@@ -430,9 +430,15 @@ most findings below are the exceptions, not a pattern.
   in the repo. Every "live" refresh for 2 of 3 clouds silently runs on the
   bundled fallback — not fully silent (a warning string + `ratesSource:
   "fallback"` are emitted), but the labeled capability doesn't exist.
-  *Tests*: a live-refresh integration test against a fixture matching the
-  **real** `index.json` shape; **edge** GCP with `GCP_BILLING_API_KEY`
-  unset states that plainly rather than degrading quietly.
+- **T-10.3.2** `done` Both plain-statement paths are now under test, closing
+  the UC's own test obligation (the behaviour existed but the GCP edge was
+  unverified, which is why the UC stayed open). `rates-module.test.ts`:
+  "AWS says plainly that it has no per-request live feed" (existing), and
+  **edge** "with `GCP_BILLING_API_KEY` unset, says plainly how to enable live
+  rates" (new — `vi.stubEnv` forces the key-unset path deterministically, then
+  asserts `ratesSource: "fallback"` + a warning naming both `GCP_BILLING_API_KEY`
+  and `rates:validate`, with a still-complete fallback card). What remains for GCP
+  is the *live crawl itself*, tracked separately as REQ-4 (needs the key).
 
 ## REQ-11 — User-editable state must be validated as strictly as the API that consumes it  `done`
 
@@ -458,10 +464,11 @@ most findings below are the exceptions, not a pattern.
   submit; **edge** a share link with an unexpected `volume` key shape must
   not crash the page.
 
-## REQ-9 — One rule, one implementation  `doing`
+## REQ-9 — One rule, one implementation  `done`
 
 Two sessions found this independently, from opposite ends. Merged here so it
-reads as one requirement with several instances.
+reads as one requirement with several instances. Every identified duplicate
+now has a single implementation; a newly-found instance gets a fresh task.
 
 ### UC-9.0 — A CI gate must not re-implement an engine invariant
 
@@ -473,6 +480,20 @@ reads as one requirement with several instances.
   `node --experimental-strip-types`).
   *Learning*: any invariant asserted in both a gate script and the engine is a
   drift waiting to happen. Import the engine.
+
+### UC-9.1 — "Does this provider have Terraform inventory?" must have one answer
+
+- **T-9.1.1** `done` `tf-honesty-warnings.ts` decided whether to push the
+  "no TF inventory" note with a hardcoded provider-name check, while
+  `AWS_TF_PRESENT`/`GCP_TF_PRESENT` (both `false`) sat inert in each provider's
+  `capability-meter-map.ts` saying the same thing. Two encodings of one fact —
+  the day AWS/GCP Terraform lands, someone flips a flag and the warning keeps
+  firing from the stale hardcoded check. Now the warning branches on the flags
+  (`provider === "aws" ? AWS_TF_PRESENT : GCP_TF_PRESENT`), so the flags are the
+  single source of truth and the note becomes correct automatically.
+  *Tests*: `tf-honesty-warnings.test.ts` stubs `AWS_TF_PRESENT: true` and asserts
+  the note is *not* pushed; the flags' `toBe(false)` invariant stays in
+  `capability-meter-map.test.ts`.
 
 
 A hardcoded-config sweep found the cost-engine's own `core/`/provider
@@ -822,14 +843,36 @@ The 53 over-exported symbols are not dead — they are used inside their definin
 file but exposed anyway. They widen the package's public surface and make
 refactoring harder than it needs to be. Tracked as REQ-8; not urgent.
 
-## New findings this session — `needs-approval`, awaiting a human decision
+## New findings this session — all resolved (2026-08-11)
 
 Found via a dead-code/unfinished-feature audit (export-usage cross-reference
-across all three packages + `apps/web`, plus a TODO/FIXME grep that returned
-zero hits — this repo doesn't leave inline deferred-work comments). None of
-these have been deleted or finished; they're listed here for approval per
-this repo's standing rule that dead code gets a human decision, not a
-unilateral delete.
+across all three packages + `apps/web`). Originally parked for human approval;
+with that approval given ("decide yourself"), every row is now dispositioned —
+most were **finished** by concurrent work rather than deleted, which is the
+outcome the audit hoped for (a started feature getting wired up beats a delete):
+
+- **Freeze-export** (`freezeEstimate`/`loadFrozenEstimate`/`validateExportSchema`)
+  — **FINISHED.** `POST /v1/estimates/freeze` and `/v1/estimates/reload` routes
+  now expose the whole pin/reload-and-verify cycle (`app.ts`); the seam that used
+  to make it unreachable is gone.
+- **`HowToUseEstimator`** — **DELETED** (superseded by `JourneyIntro`; the file
+  and its dead CSS are gone).
+- **`loadLastShareState`** (+`readLocalJson`) — **FINISHED.** Wired into
+  `EstimatorPage.tsx` bootstrap, so the write path now has a matching read/restore.
+- **`AWS_TF_PRESENT`/`GCP_TF_PRESENT`** — **WIRED.** `tf-honesty-warnings.ts` now
+  branches on the flags (`provider === "aws" ? AWS_TF_PRESENT : GCP_TF_PRESENT`)
+  instead of a hardcoded provider-name check, so the flags are load-bearing and
+  the no-TF-inventory note has one source of truth (a REQ-9 dedup, with a test
+  that flips a flag to `true`).
+- **`capabilityForAffectsField`** — **DELETED** (tf-grounding.ts refactored;
+  the function no longer exists).
+- **`CAPABILITY_LABELS`** — **DELETED** (deprecated bridge, zero callers).
+- **`DeprecatedForce`** query param — **DELETED** from `openapi.yaml`; generated
+  types regenerated (drift check green), so the contract no longer advertises a
+  no-op parameter.
+
+Historical detail retained below for provenance; every "Recommendation" has now
+been carried out.
 
 | Symbol / area | File | What it looks like | Recommendation |
 | --- | --- | --- | --- |

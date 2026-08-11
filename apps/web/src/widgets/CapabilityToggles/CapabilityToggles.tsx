@@ -20,18 +20,6 @@ export const CAPABILITY_KEYS = [
 
 export type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 
-/** @deprecated Prefer capabilityLabel() — kept for callers expecting short names. */
-export const CAPABILITY_LABELS: Record<CapabilityKey, string> = {
-  discovery: capabilityLabel("discovery"),
-  auditLogs: capabilityLabel("auditLogs"),
-  adsCloud: capabilityLabel("adsCloud"),
-  adsOutpost: capabilityLabel("adsOutpost"),
-  dspm: capabilityLabel("dspm"),
-  registry: capabilityLabel("registry"),
-  serverless: capabilityLabel("serverless"),
-  egress: capabilityLabel("egress"),
-};
-
 export type CapabilityTogglesProps = {
   value: EstimateCapabilities;
   onChange: (next: EstimateCapabilities) => void;

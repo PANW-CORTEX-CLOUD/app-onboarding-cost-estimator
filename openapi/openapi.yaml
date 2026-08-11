@@ -70,14 +70,6 @@ paths:
       operationId: refreshRates
       tags: [rates]
       summary: Force live rate refresh (rate-limited)
-      parameters:
-        - name: DeprecatedForce
-          in: query
-          required: false
-          deprecated: true
-          description: Deprecated no-op; use body.forceLive
-          schema:
-            type: boolean
       requestBody:
         required: true
         content:
