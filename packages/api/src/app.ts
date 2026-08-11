@@ -13,6 +13,7 @@ import {
   logEstimateOutcome,
   logRejection,
   requestLogger,
+  requestIdOf,
 } from "./request-log.ts";
 import { swaggerUI } from "@hono/swagger-ui";
 import {
@@ -185,10 +186,29 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
   // catch-all. Out of scope for the injection seam itself.
   app.onError((err, c) => {
     const detail = err instanceof Error ? err.message : "unknown error";
+    // Log the real cause server-side, keyed to the request id.
     logRejection(c, `unhandled: ${detail}`);
+    // Do NOT echo an *unexpected* error's raw message to the client (CWE-209 /
+    // OWASP improper error handling). Unlike the 400 validation/fail-closed
+    // paths — whose detail is domain-controlled and client-actionable — an
+    // unhandled throw can carry an upstream provider's error text, an internal
+    // URL, or stack-adjacent detail. That directly contradicts this file's own
+    // contract ("Never returns raw provider OData / price-list payloads"). The
+    // client gets a stable message plus the request id (RFC 7807 `instance`
+    // and an `X-Request-Id` header) to quote to support; the real detail lives
+    // in the logs under that same id.
+    const requestId = requestIdOf(c);
+    c.header("X-Request-Id", requestId);
     return problemJson(
       c,
-      problem(500, "Internal error", detail),
+      {
+        ...problem(
+          500,
+          "Internal error",
+          "An unexpected internal error occurred. Quote the request id when reporting it.",
+        ),
+        instance: requestId,
+      },
       500,
     );
   });
