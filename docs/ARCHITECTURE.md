@@ -129,7 +129,8 @@ Wired into `pnpm test` via cost-engine / root scripts.
 ## OpenAPI as SSOT
 
 - Contract: [`openapi/openapi.yaml`](../openapi/openapi.yaml) (filled in package 15).
-- Codegen: `openapi-typescript` → committed types; CI drift check later.
+- Codegen: `openapi-typescript` → committed types; drift enforced by
+  `check-openapi-drift.mjs` inside `pnpm test`, run in CI (`.github/workflows/ci.yml`).
 - Web: `openapi-fetch` only — never hand-roll paths that diverge from the YAML.
 - Handlers in `packages/api` validate with Zod derived from the contract; map to engine ports — **no pricing formulas in handlers**.
 
