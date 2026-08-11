@@ -55,6 +55,15 @@ export function CostBreakdown({
           meterId: li.meterId,
           amount: li.amount,
           confidence: li.confidence,
+          ...(li.verification
+            ? {
+                verification: {
+                  trusted: li.verification.trusted,
+                  verdict: li.verification.verdict,
+                  sourceUrl: li.verification.sourceUrl,
+                },
+              }
+            : {}),
         })));
 
   return (
@@ -79,6 +88,7 @@ export function CostBreakdown({
             <th scope="col">Cloud meter</th>
             <th scope="col">Monthly $</th>
             <th scope="col">Confidence</th>
+            <th scope="col">Source</th>
             <th scope="col">Note</th>
           </tr>
         </thead>
@@ -100,6 +110,30 @@ export function CostBreakdown({
               </td>
               <td>{usd(li.amount)}</td>
               <td data-testid={`confidence-${li.meterId}`}>{li.confidence}</td>
+              <td data-testid={`source-${li.meterId}`}>
+                {li.verification ? (
+                  li.verification.trusted ? (
+                    <a
+                      className="verify-badge verify-badge--trusted"
+                      href={li.verification.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Vendor-backed rate — verified against ${li.verification.sourceUrl}`}
+                    >
+                      ✓ verified
+                    </a>
+                  ) : (
+                    <span
+                      className="verify-badge verify-badge--untrusted"
+                      title={`Not vendor-backed (${li.verification.verdict}) — treat as indicative`}
+                    >
+                      ⚠ {li.verification.verdict}
+                    </span>
+                  )
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </td>
               <td className="muted">{li.note ?? ""}</td>
             </tr>
           ))}

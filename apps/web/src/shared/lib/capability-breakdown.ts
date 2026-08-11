@@ -12,11 +12,25 @@ export type CapabilityFlags = {
   egress?: boolean;
 };
 
+/**
+ * Per-line provenance the UI surfaces so a reviewer can see *why* a line is
+ * trustworthy without reading source: whether the rate is vendor-backed, the
+ * ledger verdict, and a link to the official source. Mirrors the load-bearing
+ * fields of the API's `MeterVerification` (a full import would pull the
+ * generated OpenAPI types into this shared helper for three fields).
+ */
+export type RowVerification = {
+  trusted: boolean;
+  verdict: string;
+  sourceUrl: string;
+};
+
 export type LineItemRow = {
   capability: string;
   meterId: string;
   amount: number;
   confidence: string;
+  verification?: RowVerification;
 };
 
 export type EstimateLike = {
@@ -46,6 +60,7 @@ export type BreakdownRow = {
   confidence: string;
   placeholder?: boolean;
   note?: string;
+  verification?: RowVerification;
 };
 
 /**
@@ -101,6 +116,7 @@ export function buildBreakdownRows(
     meterId: li.meterId,
     amount: li.amount,
     confidence: li.confidence,
+    ...(li.verification ? { verification: li.verification } : {}),
   }));
 
   const capsWithLines = new Set(rows.map((r) => r.capability));

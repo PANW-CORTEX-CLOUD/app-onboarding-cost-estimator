@@ -1357,3 +1357,21 @@ fieldset[data-testid="capability-toggles"] {
 }
 
 .applied-default-label { font-size: 0.9rem; }
+
+/* Per-line rate provenance badges in the cost breakdown (short-term ideation:
+   "removes the last reason to read the source"). Theme-neutral, readable in
+   both palettes — colour is a hint, the text carries the meaning. */
+.verify-badge {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.verify-badge--trusted {
+  color: #1a7f37;
+  text-decoration: none;
+}
+.verify-badge--trusted:hover { text-decoration: underline; }
+.verify-badge--untrusted { color: #9a6700; }
+@media (prefers-color-scheme: dark) {
+  .verify-badge--trusted { color: #3fb950; }
+  .verify-badge--untrusted { color: #d29922; }
+}
