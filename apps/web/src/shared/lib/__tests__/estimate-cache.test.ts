@@ -1,5 +1,5 @@
 /**
- * REQ-17 — a cached estimate must be structurally valid before it is rendered.
+ * REQ-18 — a cached estimate must be structurally valid before it is rendered.
  *
  * The cache is single-user localStorage, so the realistic corruption is not an
  * attacker but **persistence drift**: an entry written by an older build whose

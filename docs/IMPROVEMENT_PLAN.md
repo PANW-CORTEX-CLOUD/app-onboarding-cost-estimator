@@ -56,7 +56,8 @@ to find one.
 | [REQ-14](#req-14--a-test-must-not-be-able-to-silently-not-run) | A test must not be able to silently not-run | `done` |
 | [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `done` |
 | [REQ-16](#req-16--error-responses-must-carry-the-media-type-the-contract-declares) | Error responses must carry the media type the contract declares | `done` |
-| [REQ-17](#req-17--cached-ui-state-must-be-validated-as-strictly-as-it-is-rendered) | Cached UI state must be validated as strictly as it is rendered | `done` |
+| [REQ-17](#req-17--an-unexpected-error-must-not-leak-its-raw-message-to-the-client) | An unexpected error must not leak its raw message to the client | `done` |
+| [REQ-18](#req-18--cached-ui-state-must-be-validated-as-strictly-as-it-is-rendered) | Cached UI state must be validated as strictly as it is rendered | `done` |
 
 ---
 
@@ -724,16 +725,51 @@ this independently**, which is itself the argument for the learning below.
   — and assert the media type, not just the body, or a contract drift stays
   invisible.
 
-## REQ-17 — Cached UI state must be validated as strictly as it is rendered  `done`
+## REQ-17 — An unexpected error must not leak its raw message to the client  `done`
+
+Found by a read-only sweep of the just-merged global error net.
+
+### UC-17.1 — A 500 response carries a correlation id, not internal detail
+
+- **T-17.1.1** `done` The global `app.onError` net (REQ-15 T-15.2.2) rendered
+  `err.message` verbatim into the 500 `detail`. For the *unexpected* throw that
+  net exists to catch, that message is uncontrolled — an upstream provider's
+  error text, an internal URL, stack-adjacent detail — so echoing it is CWE-209
+  (information exposure through an error message) and directly contradicts this
+  API's own stated contract, *"Never returns raw provider OData / price-list
+  payloads"* (`app.ts` header; `sanitizeRatesResponse`). The 400
+  validation/fail-closed paths are unaffected: their detail is domain-controlled
+  and client-actionable (it names the field to fix), so it stays.
+  Fixed the 500 net to log the real cause server-side (already keyed to the
+  request id) and return a **stable generic** detail plus the request id in the
+  RFC 7807 `instance` field and an `X-Request-Id` header, so an operator can
+  find the real error in the logs and a client can quote the id to support.
+  *Tests* (`app-offline-seam.test.ts`): a throwing adapter on `GET /v1/rates`
+  still yields a 500 problem+json, but the body's `detail` **must not** contain
+  the raw thrown message, **must** be the generic string, and `instance` +
+  `X-Request-Id` are present and equal.
+  *Learning*: split error detail by audience — a 4xx tells the client what they
+  can fix (echo the domain reason), a 5xx tells them nothing they can act on, so
+  echoing its raw text only leaks. Give 5xx a correlation id and keep the cause
+  in the logs.
+  *Follow-on (existing `TODO(REQ-15, error-taxonomy)`)*: `/v1/estimates`'s own
+  catch maps a rate-adapter throw to a 400 with the raw message; once typed
+  engine error classes separate an upstream outage from a validation refusal,
+  the same "generic for upstream, specific for client-actionable" split should
+  apply there too.
+
+## REQ-18 — Cached UI state must be validated as strictly as it is rendered  `done`
 
 The estimator caches the last API estimate in `localStorage` for offline / fail-
 closed recovery. `loadEstimateCache` checked only that `estimate`/`provider`/
 `cachedAt` were *present* before `setEstimate()` rendered `totals.expected` and
 mapped over `lineItems`. This is the same class REQ-11 fixed for share links,
 one entry-point over: user-controlled persisted state reaching a renderer
-unvalidated.
+unvalidated. (Renumbered from a same-turn REQ-17 collision — the other session
+claimed REQ-17 for the CWE-209 fix above; this is the exact hazard the "Claiming
+an ID" rule warns about.)
 
-### UC-17.1 — A stale cache entry from an older build must not render `$NaN`
+### UC-18.1 — A stale cache entry from an older build must not render `$NaN`
 
 The realistic corruption is not an attacker (this is single-user, same-origin
 `localStorage`) but **persistence drift**: an entry written under the `:v1` key
@@ -741,7 +777,7 @@ by a prior build whose `EstimateResponse` shape differed. A presence check
 passes it; the UI then renders `$NaN` from a non-numeric `totals.expected`, or
 throws mapping over a non-array `lineItems`.
 
-- **T-17.1.1** `done` `loadEstimateCache` now runs `isRenderableEstimate` — the
+- **T-18.1.1** `done` `loadEstimateCache` now runs `isRenderableEstimate` — the
   cached estimate must carry a finite `totals.expected`, an array `lineItems`,
   and a string `provider` before it is returned. A mismatch returns `null`, a
   cache miss the caller resolves by re-fetching from the API — fail-closed, the
@@ -776,9 +812,10 @@ looked".
 | 2026-08-11 | Config that enumerates test files by name (silent no-op) | **Found and fixed (REQ-14).** `vitest.config.ts` hand-listed the two shared test dirs file-by-file; a new file in either would run nowhere. A `TODO(test-discovery)` had flagged it. Globbed both dirs and added `test-discovery.test.ts` to fail if anyone reverts to enumeration. Latent, not yet firing — all files were listed — but one added test away from a false green. |
 | 2026-08-11 | API tests reaching the live network (REQ-15) | **Found and fixed.** `refreshRates is rate-limited` looped up to 15 live refresh POSTs and timed out under parallel load (passed in isolation). Rewrote it to pre-exhaust the limiter (0 fetches) and moved counting coverage to a unit test. Then closed the root cause: `createApp(deps?: { ratesOptions })` now injects an offline rates seam into every pricing route (T-15.2.1), exercised in `app-offline-seam.test.ts`. |
 | 2026-08-11 | Error responses sent as `application/json`, not `application/problem+json` (REQ-16) | **Found and fixed.** The OpenAPI contract and `problem.ts` promise RFC 7807, but every 400/429 went out as `application/json` because Hono's `c.json()` overwrote the Content-Type `problemJson` set via `c.header()`. Invisible because tests only checked the JSON body's `status`, never the wire media type. Surfaced by the T-15.2.1 edge test. Fixed `problemJson` to `c.body(JSON.stringify(...))`; both the 400 and 429 paths now assert the media type. *Rule*: assert the media type on error responses, not just the body — and know `c.json()` clobbers a prior `c.header("Content-Type")`. |
+| 2026-08-11 | 500 error echoing the raw exception message (CWE-209, REQ-17) | **Found and fixed.** The just-merged global `onError` net put `err.message` verbatim into the 500 body — for the unexpected throw it catches, that is uncontrolled text (upstream provider errors, internal URLs) and contradicts the API's own "never expose raw provider payloads" contract. Fixed to a generic 500 detail + a request id (`instance` + `X-Request-Id`), real cause in the logs. *Rule*: 4xx detail is for the client to act on (echo the domain reason); 5xx detail is not (give a correlation id, log the cause). |
 | 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
 | 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
-| 2026-08-11 | Web-layer sweep: unchecked casts on parsed/persisted data | **Mostly clean; one fixed (REQ-17).** Audited every `JSON.parse(...) as T` and `Number(...)` in `apps/web`. The share-state restore path already re-validates through `validateShareState` (safe), the calibration cast is a post-guard union-narrowing (safe), and `billingCsv` guards `Number.isFinite` (safe). The exception: `loadEstimateCache` presence-checked but did not structurally validate the cached estimate before rendering it — a **persistence-drift** hole across app versions. Now validated (`isRenderableEstimate`), fail-closed to a cache miss. *Rule*: persisted state is external input on the next app version even when it is self-authored on this one — validate it as strictly as any wire input. |
+| 2026-08-11 | Web-layer sweep: unchecked casts on parsed/persisted data | **Mostly clean; one fixed (REQ-18).** Audited every `JSON.parse(...) as T` and `Number(...)` in `apps/web`. The share-state restore path already re-validates through `validateShareState` (safe), the calibration cast is a post-guard union-narrowing (safe), and `billingCsv` guards `Number.isFinite` (safe). The exception: `loadEstimateCache` presence-checked but did not structurally validate the cached estimate before rendering it — a **persistence-drift** hole across app versions. Now validated (`isRenderableEstimate`), fail-closed to a cache miss. *Rule*: persisted state is external input on the next app version even when it is self-authored on this one — validate it as strictly as any wire input. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*
 collaborator that reads one — pinning the adapter but not the orchestrator

@@ -136,7 +136,7 @@ describe("REQ-15 EDGE — an adapter that throws surfaces as a 5xx problem+json,
     },
   };
 
-  it("GET /v1/rates with a throwing adapter → 500 problem+json (global onError net)", async () => {
+  it("GET /v1/rates with a throwing adapter → 500 problem+json, no raw error leaked", async () => {
     const app = createApp({
       ratesOptions: { adapters: { azure: explodingAdapter }, cache: createRatesCache() },
     });
@@ -147,6 +147,14 @@ describe("REQ-15 EDGE — an adapter that throws surfaces as a 5xx problem+json,
     expect(res.headers.get("Content-Type")).toMatch(/application\/problem\+json/);
     const body = await res.json();
     expect(body.status).toBe(500);
-    expect(body.detail).toMatch(/simulated rate-feed outage/);
+    // The raw internal error message must NOT reach the client (CWE-209): an
+    // unexpected throw can carry upstream/internal detail. The detail is a
+    // stable, generic string; the real cause is in the server logs, correlated
+    // by the request id echoed in `instance` and the X-Request-Id header.
+    expect(body.detail).not.toMatch(/simulated rate-feed outage/);
+    expect(body.detail).toMatch(/unexpected internal error/i);
+    expect(body.instance).toBeTruthy();
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
+    expect(body.instance).toBe(res.headers.get("X-Request-Id"));
   });
 });
