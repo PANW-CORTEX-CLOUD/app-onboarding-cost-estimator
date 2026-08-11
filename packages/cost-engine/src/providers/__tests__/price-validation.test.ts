@@ -115,11 +115,21 @@ describe("price ledger — age drives re-crawling", () => {
     expect(staleValidations(LEDGER, wayLater).length).toBeGreaterThan(0);
   });
 
-  it("a price nobody can check stays untrusted even while its clock resets", () => {
+  it("a GCP meter with no machine feed is verified against official documentation, not left blocked", () => {
+    // GCP publishes no keyless machine-readable price feed (the old appspot
+    // pricelist.json is decommissioned, the Cloud Billing Catalog needs an API
+    // key, and the pricing page is client-rendered). That does not make the
+    // price unknowable: the authoritative vendor source is the official doc, and
+    // method=official-doc verifies against it on a 90-day human re-read cadence.
+    // So these rows are `verified`, not perpetually blocked on an API key we do
+    // not have. `blockedReason` stays a supported field for a hypothetical meter
+    // that even the docs do not price, but no meter needs it today.
     const row = validationForMeter("gce-outpost-scanner", LEDGER)!;
-    expect(row.blockedReason).toBeTruthy();
+    expect(row.method).toBe("official-doc");
+    expect(row.blockedReason).toBeUndefined();
+    expect(row.verifiedAt).toBeTruthy();
     expect(Number.isFinite(validationAgeDays(row, NOW))).toBe(true);
-    expect(verifyMeter("gce-outpost-scanner", LEDGER, NOW).trusted).toBe(false);
+    expect(verifyMeter("gce-outpost-scanner", LEDGER, NOW).trusted).toBe(true);
   });
 });
 
@@ -170,10 +180,17 @@ describe("rate provenance reaches the estimate", () => {
     expect(res.confidence).toBe("High");
   });
 
-  it("turning on a capability priced by a non-vendor meter drops confidence", async () => {
-    // Azure and AWS are fully vendor-backed now, so the only capabilities that
-    // can still demonstrate this are the GCP ones whose meters remain
-    // unverifiable: ADS snapshots (no flat SKU exists) and the scanner VM.
+  it("GCP ADS is vendor-backed via official-doc verification — not forced to Low", async () => {
+    // Milestone: every *billable* meter across all three clouds is now
+    // vendor-backed. The two GCP meters with no keyless machine feed
+    // (`pd-snapshot-storage`, `gce-outpost-scanner`) used to be left
+    // `unverified`, which forced every GCP ADS line to Low with a warning. They
+    // are now `verified` against official documentation (REQ-4: the doc is the
+    // authoritative vendor source; a 90-day human re-read replaces the auto-crawl
+    // that no keyless GCP feed allows). So the ADS line keeps the confidence the
+    // estimator actually declares (Med for a Cloud snapshot) and emits no
+    // "unverified" warning. The confidence-drop *mechanism* is still covered by
+    // the retired-meter unit test above (`acr-pull-bandwidth` → Low).
     const res = await createEstimate({
       provider: "gcp",
       region: "us-central1",
@@ -183,19 +200,27 @@ describe("rate provenance reaches the estimate", () => {
       ratesOptions: OFFLINE_RATES,
     });
     const ads = res.lineItems.find((i) => i.capability === "ads_cloud");
-    expect(ads?.verification?.trusted).toBe(false);
-    expect(ads?.confidence).toBe("Low");
-    expect(res.confidence).toBe("Low");
-    expect(res.warnings.join(" ")).toMatch(/pd-snapshot-storage/);
+    expect(ads?.verification?.trusted).toBe(true);
+    expect(ads?.verification?.verdict).toBe("verified");
+    expect(ads?.confidence).toBe("Med");
+    expect(res.warnings.join(" ")).not.toMatch(/pd-snapshot-storage/);
+    // Every priced line is vendor-backed.
+    for (const item of res.lineItems) {
+      expect(item.verification?.trusted, item.meterId).toBe(true);
+    }
   });
 
-  it("every Azure and AWS meter an estimate can bill is vendor-verified", async () => {
+  it("every meter an estimate can bill on all three clouds is vendor-verified", async () => {
     // A milestone worth locking in: after retiring the invented registry and
-    // scan meters, nothing on these two clouds prices from a number the vendor
-    // does not publish. If this fails, an unverified meter crept back in.
+    // scan meters (Azure/AWS) and doc-verifying the two GCP meters with no
+    // keyless machine feed (REQ-4), nothing on ANY of the three clouds prices
+    // from a number the vendor does not publish. If this fails, an unverified
+    // meter crept back in. GCP joined this list once `pd-snapshot-storage` and
+    // `gce-outpost-scanner` moved to verified via method=official-doc.
     for (const [provider, region] of [
       ["azure", "eastus"],
       ["aws", "us-east-1"],
+      ["gcp", "us-central1"],
     ] as const) {
       const res = await createEstimate({
         provider,

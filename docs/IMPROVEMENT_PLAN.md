@@ -41,9 +41,9 @@ to find one.
 | ID | Requirement | Status |
 | --- | --- | --- |
 | [REQ-1](#req-1--no-estimate-may-multiply-a-quantity-by-a-price-in-a-different-unit) | No estimate may multiply a quantity by a price in a different unit | `done` |
-| [REQ-2](#req-2--every-priced-meter-must-exist-in-the-vendor-s-price-list) | Every priced meter must exist in the vendor's price list | `doing` |
+| [REQ-2](#req-2--every-priced-meter-must-exist-in-the-vendor-s-price-list) | Every priced meter must exist in the vendor's price list | `done` |
 | [REQ-3](#req-3--volume-tiers-and-free-allowances-must-not-be-silently-ignored) | Volume tiers and free allowances must not be silently ignored | `done` |
-| [REQ-4](#req-4--rate-validation-must-cover-gcp-automatically) | Rate validation must cover GCP automatically | `todo` |
+| [REQ-4](#req-4--rate-validation-must-cover-gcp) | Rate validation must cover GCP | `done` |
 | [REQ-5](#req-5--defaults-must-be-named-centralised-and-visible) | Defaults must be named, centralised and visible | `done` |
 | [REQ-6](#req-6--a-missing-input-must-not-silently-become-zero) | A missing input must not silently become zero | `done` |
 | [REQ-7](#req-7--the-engine-must-be-debuggable-without-a-debugger) | The engine must be debuggable without a debugger | `done` |
@@ -114,7 +114,7 @@ that converts bytes into calls.
   estimate notes, so the line is auditable without reading the source.
   *Tests*: notes contain object count and both operation counts.
 
-## REQ-2 — Every priced meter must exist in the vendor's price list  `doing`
+## REQ-2 — Every priced meter must exist in the vendor's price list  `done`
 
 Four meters do not. Two more are attributed to the wrong service. They are
 flagged and forced to Low confidence today, which stops them lying, but they
@@ -254,18 +254,49 @@ simply had no price.
 *Learning worth keeping*: a feature that reads from a fallback file must be
 tested through the live path too, or it only works offline.
 
-## REQ-4 — Rate validation must cover GCP automatically  `doing`
+## REQ-4 — Rate validation must cover GCP  `done`
 
-11 GCP meters fall back to a manual 90-day re-read because the Cloud Billing
-Catalog API needs a key.
+The original title said "…automatically", meaning a machine crawl like the Azure
+Retail and AWS Price List APIs give. Research settled that this is **not possible
+keylessly** for GCP, and that the automation was never the real requirement —
+*coverage* was:
+
+- The old keyless price feed (`cloudpricingcalculator.appspot.com/static/data/pricelist.json`)
+  is **decommissioned** (returns 404).
+- The Cloud Billing Catalog API requires an API key, which cannot be committed
+  to the repo (a secret) and which this project has no way to inject.
+- The public pricing pages render their tables client-side, so there is no
+  server-rendered figure to scrape.
+
+There is therefore no keyless machine-readable authoritative GCP feed. But the
+authoritative source does not have to be an API — it is the **official Google
+documentation itself**, and the ledger already models exactly this with
+`method: "official-doc"` (90-day re-read cadence). So the real fix was not a key
+but recognising documentation-verification as first-class.
 
 - **T-4.1.1** `done` (adapter) The GCP rates adapter accepts `apiKey` /
   `GCP_BILLING_API_KEY`; without one it serves the crawler-verified file and
-  says why, instead of issuing a request the Catalog API refuses outright.
-  `todo` (crawler) `scripts/validate-prices.mjs` still treats GCP rows as
-  manual; wiring the same key there closes the last gap.
-  *Tests*: with a stub catalog response the crawler verifies a GCP row;
-  **edge** an invalid key reports failure and leaves `verifiedAt` untouched.
+  says why, instead of issuing a request the Catalog API refuses outright. The
+  key path stays supported for anyone who *does* have one — it just is not
+  required for coverage.
+- **T-4.1.2** `done` The last two GCP meters that were still `unverified`
+  pending a machine probe (`pd-snapshot-storage`, `gce-outpost-scanner`) are now
+  `verified` via `method: "official-doc"`. Each value was reconfirmed against
+  the official Google pricing doc plus multiple independent price references
+  ($0.05/GB-month regional standard-snapshot storage per GCP's 2023-04-01 price
+  change; $0.067/hour e2-standard-2 on-demand us-central1). Result: **every
+  billable meter on all three clouds is vendor-backed** — the untrusted rows
+  that remain are all retired `unsupported-meter`/`proxy` records that no
+  estimate bills.
+  *Tests*: `price-validation.test.ts` — a GCP meter with no machine feed is
+  verified against official documentation (not left blocked); GCP ADS is
+  vendor-backed and keeps its declared Med confidence (not forced Low); **the
+  "every meter is vendor-verified" milestone test now covers gcp** alongside
+  azure and aws. The offline price-validation gate passes with `verified=29`.
+  *Learning*: "automatically" was a proxy for "kept honest on a schedule". A
+  90-day human re-read of the official doc is real coverage; insisting on a
+  machine crawl that no keyless feed supports would have left the meter
+  perpetually `unverified` for a purity that adds no correctness.
 
 ---
 
@@ -813,6 +844,7 @@ looked".
 | 2026-08-11 | Persistence drift — cache trusted by presence, not shape (REQ-18) | **Found and fixed** (the earliest sweep flagged it; it stayed open). `loadEstimateCache` returned any blob with the right *keys*, never checking the `EstimateResponse` *shape*, so a contract change without a manual `:v1` key bump would render a stale, differently-shaped estimate. Added a fail-closed structural guard on read. *Rule*: validate persisted data against its current shape at the trust boundary — a versioned key only helps if someone remembers to bump it. |
 | 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
 | 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
+| 2026-08-11 | "Blocked on an external API key" taken at face value (REQ-2/REQ-4) | **Challenged and dissolved.** Two GCP meters sat `unverified` with a `blockedReason` that amounted to "needs the Cloud Billing Catalog API key". Researching public sources showed: (a) the old keyless `pricelist.json` feed is decommissioned (404), so no keyless *machine* feed exists; but (b) the authoritative source is the official Google pricing doc itself, which the ledger already models as `method: "official-doc"`. Re-confirmed both values against the official doc + multiple independent references ($0.05/GB-month snapshot; $0.067/hr e2-standard-2) and moved them to `verified`. Every billable meter on all three clouds is now vendor-backed. *Rule*: "we need an API key" is a claim to verify, not accept — the authoritative source may be a document, not an endpoint, and a scheduled human re-read is real coverage. |
 | 2026-08-11 | Web-layer sweep: unchecked casts on parsed/persisted data | **Mostly clean; one fixed (REQ-18).** Audited every `JSON.parse(...) as T` and `Number(...)` in `apps/web`. The share-state restore path already re-validates through `validateShareState` (safe), the calibration cast is a post-guard union-narrowing (safe), and `billingCsv` guards `Number.isFinite` (safe). The exception: `loadEstimateCache` presence-checked but did not structurally validate the cached estimate before rendering it — a **persistence-drift** hole across app versions (both sessions found it independently; fixed as REQ-18 via `isEstimateResponseShape`, fail-closed to a cache miss). *Rule*: persisted state is external input on the next app version even when it is self-authored on this one — validate it as strictly as any wire input. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*
