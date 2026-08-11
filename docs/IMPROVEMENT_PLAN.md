@@ -47,7 +47,7 @@ to find one.
 | [REQ-5](#req-5--defaults-must-be-named-centralised-and-visible) | Defaults must be named, centralised and visible | `done` |
 | [REQ-6](#req-6--a-missing-input-must-not-silently-become-zero) | A missing input must not silently become zero | `done` |
 | [REQ-7](#req-7--the-engine-must-be-debuggable-without-a-debugger) | The engine must be debuggable without a debugger | `done` |
-| [REQ-8](#req-8--public-surface-should-be-the-surface-we-mean) | Public surface should be the surface we mean | `needs-approval` |
+| [REQ-8](#req-8--public-surface-should-be-the-surface-we-mean) | Public surface should be the surface we mean | `done` |
 | [REQ-9](#req-9--one-rule-one-implementation) | One rule, one implementation | `done` |
 | [REQ-10](#req-10--silent-fallbacks-must-not-defeat-fail-closed-guarantees) | Silent fallbacks must not defeat fail-closed guarantees | `done` |
 | [REQ-11](#req-11--user-editable-state-must-be-validated-as-strictly-as-the-api-that-consumes-it) | User-editable state must be validated as strictly as the API that consumes it | `done` |
@@ -56,6 +56,7 @@ to find one.
 | [REQ-14](#req-14--a-test-must-not-be-able-to-silently-not-run) | A test must not be able to silently not-run | `done` |
 | [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `done` |
 | [REQ-16](#req-16--error-responses-must-carry-the-media-type-the-contract-declares) | Error responses must carry the media type the contract declares | `done` |
+| [REQ-17](#req-17--cached-ui-state-must-be-validated-as-strictly-as-it-is-rendered) | Cached UI state must be validated as strictly as it is rendered | `done` |
 
 ---
 
@@ -723,6 +724,35 @@ this independently**, which is itself the argument for the learning below.
   — and assert the media type, not just the body, or a contract drift stays
   invisible.
 
+## REQ-17 — Cached UI state must be validated as strictly as it is rendered  `done`
+
+The estimator caches the last API estimate in `localStorage` for offline / fail-
+closed recovery. `loadEstimateCache` checked only that `estimate`/`provider`/
+`cachedAt` were *present* before `setEstimate()` rendered `totals.expected` and
+mapped over `lineItems`. This is the same class REQ-11 fixed for share links,
+one entry-point over: user-controlled persisted state reaching a renderer
+unvalidated.
+
+### UC-17.1 — A stale cache entry from an older build must not render `$NaN`
+
+The realistic corruption is not an attacker (this is single-user, same-origin
+`localStorage`) but **persistence drift**: an entry written under the `:v1` key
+by a prior build whose `EstimateResponse` shape differed. A presence check
+passes it; the UI then renders `$NaN` from a non-numeric `totals.expected`, or
+throws mapping over a non-array `lineItems`.
+
+- **T-17.1.1** `done` `loadEstimateCache` now runs `isRenderableEstimate` — the
+  cached estimate must carry a finite `totals.expected`, an array `lineItems`,
+  and a string `provider` before it is returned. A mismatch returns `null`, a
+  cache miss the caller resolves by re-fetching from the API — fail-closed, the
+  same stance the share-link path takes. Found in the 2026-08-11 web-layer
+  anti-pattern sweep (unchecked casts on parsed/persisted data).
+  *Tests* (`estimate-cache.test.ts`): a well-formed entry round-trips; a provider
+  mismatch is a miss; **edge** a non-finite/`NaN` `totals.expected`, a non-array
+  `lineItems`, a missing `totals`, malformed JSON, and missing top-level keys all
+  fail closed to `null`. Web suite (185) confirms real cached estimates written
+  by the app still pass the stricter guard.
+
 ---
 
 ## Sweep record
@@ -748,6 +778,7 @@ looked".
 | 2026-08-11 | Error responses sent as `application/json`, not `application/problem+json` (REQ-16) | **Found and fixed.** The OpenAPI contract and `problem.ts` promise RFC 7807, but every 400/429 went out as `application/json` because Hono's `c.json()` overwrote the Content-Type `problemJson` set via `c.header()`. Invisible because tests only checked the JSON body's `status`, never the wire media type. Surfaced by the T-15.2.1 edge test. Fixed `problemJson` to `c.body(JSON.stringify(...))`; both the 400 and 429 paths now assert the media type. *Rule*: assert the media type on error responses, not just the body — and know `c.json()` clobbers a prior `c.header("Content-Type")`. |
 | 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
 | 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
+| 2026-08-11 | Web-layer sweep: unchecked casts on parsed/persisted data | **Mostly clean; one fixed (REQ-17).** Audited every `JSON.parse(...) as T` and `Number(...)` in `apps/web`. The share-state restore path already re-validates through `validateShareState` (safe), the calibration cast is a post-guard union-narrowing (safe), and `billingCsv` guards `Number.isFinite` (safe). The exception: `loadEstimateCache` presence-checked but did not structurally validate the cached estimate before rendering it — a **persistence-drift** hole across app versions. Now validated (`isRenderableEstimate`), fail-closed to a cache miss. *Rule*: persisted state is external input on the next app version even when it is self-authored on this one — validate it as strictly as any wire input. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*
 collaborator that reads one — pinning the adapter but not the orchestrator
