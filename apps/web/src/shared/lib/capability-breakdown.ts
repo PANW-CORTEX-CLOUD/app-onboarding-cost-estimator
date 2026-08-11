@@ -23,6 +23,9 @@ export type RowVerification = {
   trusted: boolean;
   verdict: string;
   sourceUrl: string;
+  /** True when a trusted rate is past its re-check window (still shown, flagged). */
+  stale?: boolean;
+  ageDays?: number;
 };
 
 export type LineItemRow = {

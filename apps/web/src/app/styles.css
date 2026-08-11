@@ -1375,3 +1375,8 @@ fieldset[data-testid="capability-toggles"] {
   .verify-badge--trusted { color: #3fb950; }
   .verify-badge--untrusted { color: #d29922; }
 }
+.verify-badge--stale { color: #9a6700; text-decoration: none; }
+.verify-badge--stale:hover { text-decoration: underline; }
+@media (prefers-color-scheme: dark) {
+  .verify-badge--stale { color: #d29922; }
+}

@@ -74,6 +74,32 @@ describe("CostBreakdown — per-line provenance", () => {
     expect(cell.textContent).toMatch(/proxy/);
   });
 
+  it("flags a trusted-but-stale rate so the reviewer knows to re-verify", () => {
+    const estimate = estimateWith([
+      {
+        provider: "gcp",
+        capability: "ads_cloud",
+        meterId: "pd-snapshot-storage",
+        amount: 3,
+        confidence: "Med",
+        verification: {
+          verdict: "verified",
+          verifiedAt: "2026-01-01",
+          ageDays: 222,
+          stale: true,
+          trusted: true,
+          sourceUrl: "https://gcp.example/disks",
+        },
+      },
+    ] as unknown as EstimateResponse["lineItems"]);
+
+    render(<CostBreakdown estimate={estimate} />);
+    const cell = screen.getByTestId("source-pd-snapshot-storage");
+    // Still links to the source (it IS vendor-backed) but is flagged stale.
+    expect(cell.querySelector("a")).not.toBeNull();
+    expect(cell.textContent).toMatch(/stale/i);
+  });
+
   it("EDGE: a line with no verification renders a neutral dash, not a crash", () => {
     const estimate = estimateWith([
       {

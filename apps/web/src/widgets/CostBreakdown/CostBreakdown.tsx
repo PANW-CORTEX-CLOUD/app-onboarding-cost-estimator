@@ -61,6 +61,8 @@ export function CostBreakdown({
                   trusted: li.verification.trusted,
                   verdict: li.verification.verdict,
                   sourceUrl: li.verification.sourceUrl,
+                  stale: li.verification.stale,
+                  ageDays: li.verification.ageDays,
                 },
               }
             : {}),
@@ -114,13 +116,21 @@ export function CostBreakdown({
                 {li.verification ? (
                   li.verification.trusted ? (
                     <a
-                      className="verify-badge verify-badge--trusted"
+                      className={
+                        li.verification.stale
+                          ? "verify-badge verify-badge--stale"
+                          : "verify-badge verify-badge--trusted"
+                      }
                       href={li.verification.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      title={`Vendor-backed rate — verified against ${li.verification.sourceUrl}`}
+                      title={
+                        li.verification.stale
+                          ? `Vendor-backed but past its re-check window (${li.verification.ageDays ?? "?"}d) — re-verify against ${li.verification.sourceUrl}`
+                          : `Vendor-backed rate — verified against ${li.verification.sourceUrl}`
+                      }
                     >
-                      ✓ verified
+                      {li.verification.stale ? "⚠ verified · stale" : "✓ verified"}
                     </a>
                   ) : (
                     <span
