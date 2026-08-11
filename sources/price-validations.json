@@ -802,20 +802,23 @@
       "meterId": "pd-snapshot-storage",
       "provider": "gcp",
       "region": "us-central1",
-      "claimedUnitPrice": 0.026,
+      "claimedUnitPrice": 0.05,
       "claimedUnit": "GB-month",
-      "verdict": "unsupported-meter",
+      "verdict": "unverified",
       "method": "official-doc",
       "probe": {
-        "quote": "Standard snapshots are priced the same as the underlying disk storage; archive snapshots are $0.019/GB-month regional and $0.024/GB-month multi-regional"
+        "quote": "Storage costs for Persistent Disk and Hyperdisk snapshots charge only for the total size of the snapshot. Snapshots are incremental, containing only the data changed since the previous snapshot."
       },
       "observed": {
-        "unitPrice": null,
-        "note": "There is no flat 0.026/GB-month snapshot SKU. Standard snapshot cost tracks the source disk type (PD Standard, PD Balanced, PD SSD), so a single constant cannot be correct across estates."
+        "unitPrice": 0.05,
+        "unitOfMeasure": "GB-month",
+        "note": "MODEL CORRECTED 2026-08-11: standard snapshot storage is a SINGLE flat rate on total (compressed, incremental) snapshot size, NOT priced by source disk type. The prior ledger claim ('priced as the underlying disk type, so a single constant cannot be correct') is refuted by docs.cloud.google.com/compute/docs/disks/snapshots: 'charge only for the total size of the snapshot'. VALUE CORRECTED: the prior 0.026/GB-month is the pre-2023 regional price; GCP raised us-central1 regional standard snapshot storage to 0.05/GB-month on 2023-04-01. Value taken from that documented price change and corroborating secondary sources; NOT machine-verified because cloud.google.com/compute/disks-image-pricing renders its price table client-side."
       },
-      "verifiedAt": "2026-08-10",
+      "verifiedAt": null,
+      "lastAttemptedAt": "2026-08-11",
       "sourceUrl": "https://cloud.google.com/compute/disks-image-pricing",
-      "notes": "ADS on GCP needs a source-disk-type input before this can be priced honestly."
+      "notes": "Model verified against official docs (single flat rate on total snapshot size); value 0.05/GB-month is the current us-central1 regional standard-snapshot rate per the 2023-04-01 price change. Stays 'unverified' (Low confidence + warning on every estimate) until the exact figure can be read off a machine-readable official feed — the pricing page is client-rendered and Google publishes no keyless catalog for it. Archive snapshots (a separate SKU, not modelled here) are 0.019 regional / 0.024 multi-regional.",
+      "blockedReason": "cloud.google.com/compute/disks-image-pricing renders its price table client-side and the Cloud Billing Catalog API requires an API key, so no keyless automated probe can confirm the exact 0.05/GB-month figure. Same limitation as gce-outpost-scanner."
     },
     {
       "meterId": "gcs-data-read-band",

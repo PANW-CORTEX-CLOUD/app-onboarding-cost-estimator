@@ -15,9 +15,29 @@ import {
 } from "../azure/tf-audit-reconciliation.ts";
 import { AZURE_TF_DEFAULTS } from "../azure/capability-meter-map.ts";
 import { createEstimate } from "../create-estimate.ts";
+import { createAzureRatesAdapter } from "../azure/azure-rates-adapter.ts";
+import { createAwsRatesAdapter } from "../aws/aws-rates-adapter.ts";
+import { createGcpRatesAdapter } from "../gcp/gcp-rates-adapter.ts";
+import { createRatesCache } from "../rates/rates-cache.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "../../..");
+
+/**
+ * Offline rate seam — this discovery-only assertion is purely structural ($0,
+ * no line items) yet without a seam it fell through to a live `getRates`
+ * fetch, so it could time out under suite load exactly like the sibling
+ * create-estimate-mvp discovery case. Fallback rates, pinned clock.
+ */
+const NOW = new Date("2026-08-11T00:00:00.000Z");
+const OFFLINE_RATES = {
+  adapters: {
+    azure: createAzureRatesAdapter({ forceFallback: true, now: NOW }),
+    aws: createAwsRatesAdapter({ forceFallback: true, now: NOW }),
+    gcp: createGcpRatesAdapter({ forceFallback: true, now: NOW }),
+  },
+  cache: createRatesCache(),
+};
 const REPO_ROOT = path.resolve(PACKAGE_ROOT, "../..");
 const RECON_DOC = path.join(REPO_ROOT, "docs/TF_COST_RECONCILIATION.md");
 
@@ -50,6 +70,8 @@ describe("package 30 — TF reconciliation matrix (REQ/AC)", () => {
       region: "eastus",
       capabilities: { discovery: true },
       volume: { accountCount: 10 },
+      ratesOptions: OFFLINE_RATES,
+      now: NOW,
     });
     expect(r.lineItems).toEqual([]);
     expect(r.totals.expected).toBe(0);

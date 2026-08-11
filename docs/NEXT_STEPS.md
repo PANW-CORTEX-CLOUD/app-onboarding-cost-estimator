@@ -43,15 +43,30 @@ exceptions are forced to Low-confidence bands and each raises a named warning.
 
 ### Prices that are still not real
 
-These four are **not vendor meters**. They are placeholders, and the estimator
-now says so on every line that uses them.
+These three are **not vendor meters**. They are placeholders (all now retired),
+and the estimator says so on every line that uses them.
 
 | Meter | Claim | What the vendor actually charges |
 | --- | --- | --- |
 | `acr-pull-bandwidth` (Azure) | $0.01/GB pull | ACR bills a Registry Unit per day plus $0.10/GB-month stored. Egress bills through **Bandwidth**, and same-region pulls are free. There is no per-GB pull SKU. |
 | `s3-data-retrieval-band` (AWS) | $0.0004/GB retrieval | **S3 Standard has no retrieval fee.** Retrieval charges exist only for IA and Glacier classes. The number is the per-1,000 GET price reused as a per-GB rate. |
-| `pd-snapshot-storage` (GCP) | $0.026/GB-month | Standard snapshots are priced as the *underlying disk type*, so no single constant is right. Archive snapshots are $0.019 regional / $0.024 multi-regional. |
 | `gcs-data-read-band` (GCP) | $0.12/GB read | **Cloud Storage has no per-GB read charge.** In-region reads cost Class B operations only; $0.12/GB is the internet egress rate. |
+
+### A real meter whose value we can't machine-verify
+
+`pd-snapshot-storage` (GCP) **is** a real vendor meter — corrected 2026-08-11.
+It was previously listed above as "not a vendor meter" on the belief that
+standard snapshots are priced by the underlying disk type. That belief is
+**refuted** by docs.cloud.google.com/compute/docs/disks/snapshots: snapshot
+storage is a *single flat rate on the total (compressed, incremental) snapshot
+size*, so one meter is the right shape. The old value `$0.026/GB-month` was the
+pre-2023 regional price; GCP raised us-central1 regional standard-snapshot
+storage to **$0.05/GB-month** on 2023-04-01, and that is now the fallback value.
+It stays `unverified` (Low confidence + warning on every ADS line) only because
+the pricing page is client-rendered and Google publishes no keyless feed to
+confirm the exact figure — the same limitation as `gce-outpost-scanner`.
+Archive snapshots ($0.019 regional / $0.024 multi-regional) are a separate SKU
+this estimator does not model.
 
 And two that are numerically right but wrongly attributed: `ecr-data-transfer`
 and `artifact-registry-egress` both carry the *network egress* rate while
