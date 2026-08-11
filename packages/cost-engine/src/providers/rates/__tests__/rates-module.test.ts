@@ -3,7 +3,7 @@
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FALLBACK_MAX_AGE_DAYS,
   ageDaysFromCapturedAt,
@@ -117,6 +117,26 @@ describe("package 04 — TEST parsers + offline + age", () => {
     // Fallback still has to be a complete, usable card.
     expect(Object.keys(result.rates.unitPrices).length).toBeGreaterThan(0);
     expect(result.rates.unitPrices["kinesis-shard-hour"]).toBe(0.015);
+  });
+
+  describe("GCP live-refresh honesty (REQ-10 UC-10.3)", () => {
+    // stubEnv so the assertion holds whether or not CI happens to export a key.
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("EDGE: with GCP_BILLING_API_KEY unset, says plainly how to enable live rates", async () => {
+      vi.stubEnv("GCP_BILLING_API_KEY", "");
+      // No forceFallback and no injected apiKey: this is the real "user asked
+      // for live but the key isn't configured" path. It must fall back *and*
+      // name the missing key, not degrade silently.
+      const adapter = createGcpRatesAdapter({ now: NOW });
+      const result = await adapter.getRates("us-central1");
+
+      expect(result.ratesSource).toBe("fallback");
+      expect(result.warnings.join(" ")).toMatch(/GCP_BILLING_API_KEY/);
+      expect(result.warnings.join(" ")).toMatch(/rates:validate/);
+      // The fallback still has to be a complete, usable card.
+      expect(Object.keys(result.rates.unitPrices).length).toBeGreaterThan(0);
+    });
   });
 
   it("parses mock GCP Billing Catalog → unitPrices", () => {
