@@ -23,7 +23,7 @@ export const AZURE_FALLBACK_PRICES_PATH = path.join(
 );
 
 /** Azure Retail Prices API endpoint (public, no auth). */
-export const AZURE_RETAIL_PRICES_QUERY_URL =
+const AZURE_RETAIL_PRICES_QUERY_URL =
   "https://prices.azure.com/api/retail/prices";
 
 /**

@@ -46,7 +46,7 @@ export const CAPABILITY_SIZING_DRIVERS: Partial<Record<CapabilityId, readonly st
 };
 
 /** Human labels so the error names the field a user actually sees. */
-export const DRIVER_LABELS: Record<string, string> = {
+const DRIVER_LABELS: Record<string, string> = {
   vmCount: "VM count",
   avgUsedDiskGB: "average used disk GB",
   dataEstateGB: "data estate GB",

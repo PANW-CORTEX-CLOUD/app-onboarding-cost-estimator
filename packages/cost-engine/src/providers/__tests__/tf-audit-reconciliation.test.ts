@@ -23,11 +23,17 @@ import { createRatesCache } from "../rates/rates-cache.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "../../..");
 
+const REPO_ROOT = path.resolve(PACKAGE_ROOT, "../..");
+const RECON_DOC = path.join(REPO_ROOT, "docs/TF_COST_RECONCILIATION.md");
+
 /**
- * Offline rate seam — this discovery-only assertion is purely structural ($0,
- * no line items) yet without a seam it fell through to a live `getRates`
- * fetch, so it could time out under suite load exactly like the sibling
- * create-estimate-mvp discovery case. Fallback rates, pinned clock.
+ * Price from the in-repo fallback, never the live feed. Without this seam the
+ * discovery-only estimate below reaches the real Azure Retail Prices API — a
+ * feed it will not even use, since discovery has no meter — and the test turns
+ * into a network test that times out on a slow or contended link (which is
+ * exactly how it failed in the full parallel suite while passing in isolation).
+ * Two sessions added this seam independently; the merged copy keeps the pinned
+ * clock so rate-provenance ages stay deterministic too.
  */
 const NOW = new Date("2026-08-11T00:00:00.000Z");
 const OFFLINE_RATES = {
@@ -38,8 +44,6 @@ const OFFLINE_RATES = {
   },
   cache: createRatesCache(),
 };
-const REPO_ROOT = path.resolve(PACKAGE_ROOT, "../..");
-const RECON_DOC = path.join(REPO_ROOT, "docs/TF_COST_RECONCILIATION.md");
 
 describe("package 30 — TF reconciliation matrix (REQ/AC)", () => {
   it("reconciliation doc lists discovery $0, three audit meters, exclusions", () => {

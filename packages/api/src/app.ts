@@ -9,6 +9,11 @@ import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { logger } from "hono/logger";
+import {
+  logEstimateOutcome,
+  logRejection,
+  requestLogger,
+} from "./request-log.ts";
 import { swaggerUI } from "@hono/swagger-ui";
 import {
   modelVersion,
@@ -111,6 +116,10 @@ export function createApp(): Hono {
   if (!process.env.VITEST) {
     app.use("*", logger());
   }
+  // Diagnostic log: silent unless `DEBUG=cost:api` (or `cost:*`) is set, so it
+  // is safe to leave installed in tests and in production. Runs in every
+  // environment precisely so a failing test can be re-run with DEBUG on.
+  app.use("*", requestLogger());
 
   app.get("/v1/health", (c) =>
     c.json({
@@ -214,6 +223,7 @@ export function createApp(): Hono {
     }
     const parsed = CreateEstimateRequestSchema.safeParse(body);
     if (!parsed.success) {
+      logRejection(c, `schema: ${parsed.error.message}`);
       return problemJson(
         c,
         problem(400, "Validation failed", parsed.error.message),
@@ -222,6 +232,7 @@ export function createApp(): Hono {
     }
     try {
       const estimate = await createEstimate(parsed.data);
+      logEstimateOutcome(c, estimate);
       return c.json({
         provider: estimate.provider,
         lineItems: estimate.lineItems,
@@ -238,15 +249,11 @@ export function createApp(): Hono {
         resolvedVolume: estimate.resolvedVolume,
       });
     } catch (e) {
-      return problemJson(
-        c,
-        problem(
-          400,
-          "Estimate failed",
-          e instanceof Error ? e.message : "unknown error",
-        ),
-        400,
-      );
+      // Estimates fail closed by design (unsized capability, Gov region, stale
+      // rates); the reason is the useful part, so it is logged, not just returned.
+      const detail = e instanceof Error ? e.message : "unknown error";
+      logRejection(c, `estimate: ${detail}`);
+      return problemJson(c, problem(400, "Estimate failed", detail), 400);
     }
   });
 

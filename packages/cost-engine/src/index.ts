@@ -37,6 +37,9 @@ export {
   RATES_CACHE_TTL_MS,
 } from "./core/index.ts";
 export type { FreshnessLevel, RatesFreshness } from "./core/index.ts";
+export type { LineItemVerification } from "./core/models/estimate.types.ts";
+export type { PriceTier, GraduatedCostBreakdown } from "./core/graduated-pricing.ts";
+export type { AppliedDefault, DefaultKind } from "./core/applied-defaults.ts";
 
 export {
   DEFAULT_MONTH_HOURS,
@@ -205,12 +208,19 @@ export {
   AZURE_EH_INCLUDED_GB_PER_TU,
   AZURE_EH_MBPS_PER_TU,
   AZURE_EH_EPS_PER_TU,
+  AZURE_EH_MIN_TU,
+  AZURE_EH_INGRESS_EVENT_CHUNK_BYTES,
 } from "./providers/azure/azure-stream-estimator.ts";
 
 export {
   estimateAwsAuditStream,
   sizeKinesisShards,
   kinesisPutPayloadUnits,
+  kinesisPutPayloadMillions,
+  AWS_KINESIS_MBPS_PER_SHARD,
+  AWS_KINESIS_EPS_PER_SHARD,
+  AWS_KINESIS_PUT_PAYLOAD_KB,
+  AWS_KINESIS_MIN_SHARDS,
 } from "./providers/aws/aws-stream-estimator.ts";
 
 export {
@@ -235,14 +245,23 @@ export { estimateAuditStorage } from "./providers/storage/estimate-audit-storage
 export {
   estimateAzureAuditStorage,
   AZURE_AUDIT_CAPACITY_METER,
+  AZURE_AUDIT_WRITE_OPS_METER,
+  AZURE_AUDIT_READ_OPS_METER,
+  AZURE_ALLOWED_REDUNDANCY,
 } from "./providers/azure/azure-storage-estimator.ts";
 export {
   estimateAwsAuditStorage,
   AWS_AUDIT_CAPACITY_METER,
+  AWS_AUDIT_WRITE_OPS_METER,
+  AWS_AUDIT_READ_OPS_METER,
+  AWS_ALLOWED_REDUNDANCY,
 } from "./providers/aws/aws-storage-estimator.ts";
 export {
   estimateGcpAuditStorage,
   GCP_AUDIT_CAPACITY_METER,
+  GCP_AUDIT_WRITE_OPS_METER,
+  GCP_AUDIT_READ_OPS_METER,
+  GCP_ALLOWED_REDUNDANCY,
 } from "./providers/gcp/gcp-storage-estimator.ts";
 export {
   DEFAULT_AUDIT_STORAGE_FLOOR_GB,

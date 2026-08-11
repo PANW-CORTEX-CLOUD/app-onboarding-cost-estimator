@@ -5,7 +5,7 @@
 import type { RatesResult } from "./fallback-schema.ts";
 import { RATES_CACHE_TTL_MS } from "../../core/rates/age-days.ts";
 
-export type CacheEntry = {
+type CacheEntry = {
   storedAtMs: number;
   result: RatesResult;
 };

@@ -324,12 +324,26 @@ means adding `console.log` and removing it again.
   under `DEBUG=cost:*` against a real Azure audit+DSPM estimate, and that the
   traced total equals the returned total.
 
-## REQ-8 — Public surface should be the surface we mean  `todo`
+## REQ-8 — Public surface should be the surface we mean  `done`
 
-53 symbols are `export`ed but used only inside their own file. The 5 that were
-referenced nowhere at all have been resolved — see the dead-code appendix. The
-remaining over-exports widen the package's surface and make refactoring harder,
-but nothing is wrong with them, so this stays low priority.
+The starting observation was "53 symbols are exported but used only inside their
+own file". Investigating it showed that is not one problem but three, and only
+one is a defect:
+
+| Category | Count | Action |
+| --- | --- | --- |
+| Types appearing in exported signatures | 29 | **Keep.** Public by construction — a consumer cannot name `priceQuantity`'s return type otherwise. |
+| Domain constants that are the package's vocabulary | ~19 | **Export the siblings.** `AZURE_EH_MBPS_PER_TU` was public while `AZURE_EH_MIN_TU` was not; the surface was *incoherent*, not too large. |
+| Genuine internals (adapter query URLs, a cache entry shape) | 5 | **Unexport.** |
+
+So the fix was mostly the opposite of the premise: a smaller surface would have
+hidden half of a documented formula binding. `src/__tests__/public-surface.test.ts`
+now asserts each binding set is reachable *as a complete set*, and that adapter
+query URLs stay internal.
+
+*Learning worth keeping*: "unused export" is not automatically clutter. Ask what
+role it plays — signature, vocabulary, or implementation detail — before
+deleting it.
 
 ## REQ-10 — Silent fallbacks must not defeat fail-closed guarantees  `doing`
 
@@ -483,7 +497,7 @@ re-declared elsewhere) and hand-mirrored copies within the same package.
   path in a doc comment trips it. Refer to engine files by basename from web
   code.
 
-## REQ-13 — The API must be debuggable without adding console.log  `doing`
+## REQ-13 — The API must be debuggable without adding console.log  `done`
 
 ### UC-13.1 — A request that fails inside a route handler must leave a trace
 
@@ -496,17 +510,34 @@ re-declared elsewhere) and hand-mirrored copies within the same package.
   readable.
   *Tests*: manual verification the logger prints on a live request; full
   API suite (20 tests) confirmed silent under vitest.
-- **T-12.1.2** `todo` If app-level structured logging is wanted later (not
-  just HTTP access logs), adopt `consola` over `pino` — 2.4KB vs 194KB
-  gzip, genuine isomorphic Node+browser support matching this repo's
-  cost-engine-runs-in-both-places design (`pino/browser` is Node-centric
-  and its transport model doesn't work cleanly in edge/bundled contexts).
-  Do **not** add the `debug` package specifically — it was one of ~20
-  packages in a September 2025 npm supply-chain compromise (phishing an
-  npm maintainer account; a malicious version briefly shipped a
-  crypto-wallet-hijacking payload) affecting that exact cluster of small,
-  high-fanout terminal-utility packages. Not urgent today: current
-  footprint is 3 clean, appropriate `console.*` calls total.
+- **T-13.1.2** `done` App-level structured logging, **without adding a
+  package**. The recommendation here was `consola`; the better answer was that
+  the cost-engine already has a dependency-free namespaced logger
+  (`core/debug-log.ts`), so the API uses that. One switch now lights up both
+  layers and the engine's own lines interleave with the request that caused
+  them:
+
+  ```
+  DEBUG=cost:*   pnpm --filter @cloud-connector/api start
+  ```
+
+  The two loggers have distinct jobs and that is now stated in the code:
+  `hono/logger` is the always-on **access** log (what traffic was served);
+  `request-log.ts` is the opt-in **diagnostic** log (why a request produced that
+  number) — correlation id, rate source, TF mode, confidence, meter count,
+  applied-defaults count, and the reason behind every rejection.
+
+  The supply-chain caution recorded here was verified rather than repeated: on
+  8 September 2025 a maintainer was phished via `npmjs.help` and malicious
+  versions of ~18 packages including `debug` and `chalk` shipped for roughly two
+  hours carrying a crypto-wallet-hijacking payload. Those packages are fine
+  today; the durable lesson is that a dependency added for something we already
+  have is a standing exposure bought for nothing.
+  *Tests*: silent when the namespace is off; a caller-supplied `x-request-id` is
+  echoed and a missing one minted; **edge** a blank header is replaced not
+  echoed; estimate outcome carries provider/tfMode/rates/confidence/meters;
+  **edge** both schema and engine rejections log their reason. **e2e** verified
+  against a running API with `DEBUG=cost:*`.
 
 ---
 
