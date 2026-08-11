@@ -62,18 +62,27 @@ function loadOpenApiYaml(): string {
  * Emit an RFC 7807 error with the `application/problem+json` media type the
  * OpenAPI contract declares.
  *
- * Hono gotcha (the bug this shape fixes): `c.json()` sets its own
- * `Content-Type: application/json` and **overwrites** any value set with a
- * prior `c.header("Content-Type", …)`. The old body did exactly that, so every
- * 400/429 across the API silently went out as `application/json` — a contract
- * violation that no test caught because they only checked the JSON body's
- * `status`, never the media type. `c.body()` does not touch a Content-Type
- * already on the context, so setting the header then serialising by hand
- * preserves it. A test now asserts the media type on the wire.
+ * Hono gotcha (the bug this shape fixes, found independently by two sessions):
+ * `c.json()` sets its own `Content-Type: application/json` and **overwrites**
+ * any value set with a prior `c.header("Content-Type", …)`. The old body did
+ * exactly that, so every 400/429 across the API silently went out as
+ * `application/json` — a contract violation no test caught because they only
+ * checked the JSON body's `status`, never the media type. Passing the
+ * content-type straight to `c.body()` keeps it on the wire. Tests now assert the
+ * media type on the 400/429/500 paths.
+ *
+ * The status is widened to include 500/502 for the global `onError` net below,
+ * which renders an unexpected throw (e.g. a rate-feed outage) as a problem+json
+ * rather than Hono's default bare 500.
  */
-function problemJson(c: Context, body: ProblemDetails, status: 400 | 429) {
-  c.header("Content-Type", "application/problem+json");
-  return c.body(JSON.stringify(body), status);
+function problemJson(
+  c: Context,
+  body: ProblemDetails,
+  status: 400 | 429 | 500 | 502,
+) {
+  return c.body(JSON.stringify(body), status, {
+    "Content-Type": "application/problem+json",
+  });
 }
 
 function sanitizeRatesResponse(
@@ -156,6 +165,33 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
   // is safe to leave installed in tests and in production. Runs in every
   // environment precisely so a failing test can be re-run with DEBUG on.
   app.use("*", requestLogger());
+
+  // Global error net. Hono's recommended pattern is one centralized `onError`
+  // rather than a try/catch in every handler (https://hono.dev/docs/api/hono).
+  // The routes below still return their own problem+json for *expected*,
+  // client-actionable failures (validation, fail-closed refusals) — route-level
+  // handling wins. This net exists for the *unexpected* throw: notably the
+  // `/v1/rates` and `/v1/rates/refresh` routes call `getRates` without a local
+  // try/catch, so a rate-adapter failure used to bubble out as Hono's default
+  // bare 500 with no problem+json body. Now it surfaces as a typed 500 the
+  // caller can parse — and, critically, as a response rather than a hung
+  // request.
+  //
+  // TODO(REQ-15, error-taxonomy): a rate-feed outage is really an upstream
+  // dependency failure (502/503), and `/v1/estimates`'s own catch currently
+  // maps an adapter throw to 400 alongside genuine validation refusals. Giving
+  // the engine typed error classes (UpstreamRateError vs ValidationError) would
+  // let both this net and that catch pick the honest status instead of a
+  // catch-all. Out of scope for the injection seam itself.
+  app.onError((err, c) => {
+    const detail = err instanceof Error ? err.message : "unknown error";
+    logRejection(c, `unhandled: ${detail}`);
+    return problemJson(
+      c,
+      problem(500, "Internal error", detail),
+      500,
+    );
+  });
 
   app.get("/v1/health", (c) =>
     c.json({
