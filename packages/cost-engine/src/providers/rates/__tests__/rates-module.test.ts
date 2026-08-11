@@ -59,6 +59,14 @@ describe("package 04 — AC getRates metadata", () => {
   it("returns RateCard + ratesSource + ageDays for each provider", async () => {
     for (const provider of ["azure", "aws", "gcp"] as const) {
       const r = await getRates(provider, "default", {
+        // `now` must be pinned on getRates itself, not only on the adapters:
+        // getRates stamps ageDays/freshness with its own clock, so leaving it
+        // to the wall clock made this assertion compare a wall-clock ageDays
+        // against a NOW-derived one. That agreed only while the real date sat
+        // on the same day as the fixture capturedAt, then began failing the
+        // first time the suite ran after midnight UTC — a rot, not a
+        // regression, and unrelated to whatever change was in flight.
+        now: NOW,
         adapters: {
           azure: createAzureRatesAdapter({ forceFallback: true, now: NOW }),
           aws: createAwsRatesAdapter({ forceFallback: true, now: NOW }),
