@@ -59,15 +59,21 @@ function loadOpenApiYaml(): string {
 }
 
 /**
- * Emit an RFC 7807 problem document with the correct media type.
+ * Emit an RFC 7807 error with the `application/problem+json` media type the
+ * OpenAPI contract declares.
  *
- * NOTE: this must use `c.body(...)`, not `c.json(...)`. `c.json()` hard-sets
- * `Content-Type: application/json` on the response and overrides any header set
- * beforehand, so the previous `c.header("Content-Type", "application/problem+json")`
- * followed by `c.json()` silently shipped every error as plain `application/json`
- * — the RFC 7807 media type never reached the wire. Serialising the body
- * ourselves and passing the content-type to `c.body()` is the only way to keep
- * it. (Found when the REQ-15 onError test first asserted the media type.)
+ * Hono gotcha (the bug this shape fixes, found independently by two sessions):
+ * `c.json()` sets its own `Content-Type: application/json` and **overwrites**
+ * any value set with a prior `c.header("Content-Type", …)`. The old body did
+ * exactly that, so every 400/429 across the API silently went out as
+ * `application/json` — a contract violation no test caught because they only
+ * checked the JSON body's `status`, never the media type. Passing the
+ * content-type straight to `c.body()` keeps it on the wire. Tests now assert the
+ * media type on the 400/429/500 paths.
+ *
+ * The status is widened to include 500/502 for the global `onError` net below,
+ * which renders an unexpected throw (e.g. a rate-feed outage) as a problem+json
+ * rather than Hono's default bare 500.
  */
 function problemJson(
   c: Context,
@@ -122,29 +128,29 @@ function meterMapFor(provider: "azure" | "aws" | "gcp") {
 }
 
 /**
- * Options for {@link createApp}.
+ * Construction-time dependencies for the API.
+ *
+ * The only one today is a rate-resolution seam. Every pricing route
+ * (`/v1/rates`, `/v1/rates/refresh`, `/v1/estimates`, `/v1/estimates/freeze`)
+ * resolves rates through `getRates`/`createEstimate`; injecting
+ * `forceFallback` adapters + a fresh cache here lets the whole HTTP surface be
+ * exercised without the network. Omitted in production, so rates resolve
+ * live → 24h cache → in-repo fallback exactly as before.
+ *
+ * This is deliberately constructor injection (a `deps` arg) rather than
+ * per-request `c.set()` context vars: the seam is a static test substitution,
+ * not per-request state, and it mirrors the `ratesOptions` `createEstimate`
+ * already accepts. `ratesOptions` is intentionally NOT read from the HTTP
+ * request body — adapters and caches are not serialisable and must never be
+ * caller-controlled.
  */
-export type CreateAppOptions = {
-  /**
-   * Rate-resolution seam for tests and offline runs.
-   *
-   * This is the **same** `GetRatesOptions` (adapters / cache / forceLive / now)
-   * that the engine's `getRates` and `createEstimate` already accept. When
-   * provided, every pricing route — `/v1/rates`, `/v1/rates/refresh`,
-   * `/v1/estimates`, `/v1/estimates/freeze` — resolves rates through these
-   * instead of the live feed, so an HTTP-level test can reach the pricing path
-   * without touching the network. Omit in production and the live
-   * live → 24h cache → fallback chain is used exactly as before.
-   *
-   * It is injected server-side and is deliberately **not** part of any request
-   * schema, so a client cannot smuggle adapters in through the wire.
-   */
+export type CreateAppDeps = {
   ratesOptions?: GetRatesOptions;
 };
 
-export function createApp(options: CreateAppOptions = {}): Hono {
+export function createApp(deps: CreateAppDeps = {}): Hono {
   const app = new Hono();
-  const { ratesOptions } = options;
+  const { ratesOptions } = deps;
 
   // Request access log (method/path/status/latency) - the only observability
   // this API had was a one-time startup banner and a fatal-error console.error;
@@ -232,9 +238,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
         400,
       );
     }
-    const result = await getRates(providerParsed.data, region, {
-      ...ratesOptions,
-    });
+    const result = await getRates(providerParsed.data, region, ratesOptions);
     return c.json(sanitizeRatesResponse(providerParsed.data, region, result));
   });
 
@@ -271,9 +275,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       );
     }
     const result = await getRates(parsed.data.provider, parsed.data.region, {
+      // Injected adapters/cache (tests) merge in; forceLive from the request
+      // always wins, since forcing a live refresh is this route's whole job.
       ...ratesOptions,
-      // The request's forceLive wins over any injected default: this route's
-      // whole purpose is to force a refresh.
       forceLive: parsed.data.forceLive !== false,
     });
     return c.json(
@@ -302,10 +306,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       );
     }
     try {
-      const estimate = await createEstimate({
-        ...parsed.data,
-        ...(ratesOptions ? { ratesOptions } : {}),
-      });
+      const estimate = await createEstimate(
+        ratesOptions ? { ...parsed.data, ratesOptions } : parsed.data,
+      );
       logEstimateOutcome(c, estimate);
       return c.json({
         provider: estimate.provider,
@@ -357,10 +360,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     }
     const { ackCriticalStale, ...estimateRequest } = parsed.data;
     try {
-      const estimate = await createEstimate({
-        ...estimateRequest,
-        ...(ratesOptions ? { ratesOptions } : {}),
-      });
+      const estimate = await createEstimate(
+        ratesOptions ? { ...estimateRequest, ratesOptions } : estimateRequest,
+      );
       // freezeEstimate throws when rates are critically stale without an ack -
       // that is the fail-closed export gate, so it must surface as a 400 the
       // caller can act on, not be swallowed into an unpinned success.

@@ -55,6 +55,7 @@ to find one.
 | [REQ-13](#req-13--the-api-must-be-debuggable-without-adding-console-log) | The API must be debuggable without adding console.log | `doing` |
 | [REQ-14](#req-14--a-test-must-not-be-able-to-silently-not-run) | A test must not be able to silently not-run | `done` |
 | [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `done` |
+| [REQ-16](#req-16--error-responses-must-carry-the-media-type-the-contract-declares) | Error responses must carry the media type the contract declares | `done` |
 
 ---
 
@@ -642,36 +643,62 @@ made one test flaky.
 
 ### UC-15.2 — Any route that prices should be drivable offline  `done`
 
-- **T-15.2.1** `done` `createApp(options)` now takes an optional `ratesOptions`
-  (the engine's own `GetRatesOptions` — adapters / cache / forceLive / now),
-  threaded into `/v1/rates`, `/v1/rates/refresh`, `/v1/estimates` and
-  `/v1/estimates/freeze`. Injected server-side and absent from every request
-  schema, so a client cannot smuggle adapters through the wire. The `TODO(REQ-15)`
-  marker is gone.
-  *Tests* (`app-offline-seam.test.ts`): a `/v1/rates` GET and an estimate POST
-  price from the injected fallback with no network and match the engine bit for
-  bit; **edge** two concurrent estimate POSTs are byte-identical (no clock/network
-  drift); a freeze pins the offline card; **edge** an adapter that throws surfaces
-  as a **500 problem+json** through a new global `app.onError` net, not a hang or
-  a bare 500.
-- **Design note (research-led).** Hono's guidance is one centralized
-  [`app.onError`](https://hono.dev/docs/api/hono) over a try/catch in every
-  handler, and route-level handling still wins where present — so the existing
-  per-route `problemJson(400)` fail-closed responses are untouched; the net only
-  catches the *unexpected* throw that `/v1/rates` used to leak as a bare 500.
-- **Bug found and fixed on the way.** Adding the first assertion on the error
-  media type exposed that `problemJson` set `Content-Type: application/problem+json`
-  and then called `c.json()`, which hard-sets `application/json` and overrode it —
-  so **every** error response (400/429) had silently shipped the wrong RFC 7807
-  media type. Switched to `c.body(JSON.stringify(body), status, { … })`; added a
-  content-type regression lock on the 400, 429 and 500 paths. Lesson in a code
-  comment at `problemJson`: `c.json()` owns the content-type, so a custom media
-  type must go through `c.body()`.
-- **Follow-on TODO (in code).** `TODO(REQ-15, error-taxonomy)` at `onError`: a
+- **T-15.2.1** `done` `createApp(deps?: { ratesOptions })` now forwards a
+  rate-resolution seam to all four pricing call sites (`/v1/rates`,
+  `/v1/rates/refresh`, `/v1/estimates`, `/v1/estimates/freeze`). Constructor
+  injection, not per-request `c.set()` context vars — the seam is a static test
+  substitution and mirrors the `ratesOptions` `createEstimate` already takes;
+  `ratesOptions` is deliberately **not** read from the HTTP body (adapters and
+  caches are not serialisable and must never be caller-controlled). Additive:
+  `createApp()` with no args is byte-for-byte the old behaviour. `forceLive`
+  from a refresh request still wins over injected options.
+  *Tests*: `estimate-offline.test.ts` and `app-offline-seam.test.ts` — a
+  `/v1/rates` GET and a `/v1/estimates` POST price from injected fallback
+  adapters (ratesSource "fallback", positive finite total, **deterministic**
+  across fresh apps and concurrent calls), no network; a freeze pins the offline
+  card; the no-deps default still constructs. The `TODO(REQ-15)` marker is retired.
+- **T-15.2.2** `done` **Global error net (research-led).** Two sessions built
+  the seam independently; this half adds a single centralized
+  [`app.onError`](https://hono.dev/docs/api/hono) — Hono's recommended pattern
+  over a try/catch in every handler. Route-level handling still wins where
+  present, so the per-route `problemJson(400)` fail-closed responses are
+  untouched; the net only catches the *unexpected* throw that `/v1/rates` and
+  `/v1/rates/refresh` (no local try/catch) used to leak as Hono's default bare
+  500. It now renders as a **500 problem+json**.
+  *Tests* (`app-offline-seam.test.ts`): an injected adapter that throws on
+  `GET /v1/rates` surfaces as a 500 with `Content-Type: application/problem+json`
+  and a parseable body — a response, not a hang.
+  *Follow-on TODO (in code)*: `TODO(REQ-15, error-taxonomy)` at `onError` — a
   rate-feed outage is really an upstream failure (502/503), and `/v1/estimates`'s
   own catch maps an adapter throw to 400 alongside genuine validation refusals.
   Typed engine error classes (UpstreamRateError vs ValidationError) would let both
   sites pick the honest status. Out of scope for the seam itself.
+
+## REQ-16 — Error responses must carry the media type the contract declares  `done`
+
+Found while writing the T-15.2.1 edge test — the injected-throwing-adapter case
+asserted the error's `Content-Type` and it came back wrong. **Two sessions found
+this independently**, which is itself the argument for the learning below.
+
+### UC-16.1 — A client that branches on `application/problem+json` sees it
+
+- **T-16.1.1** `done` `openapi.yaml` declares `application/problem+json` for
+  error responses and `problem.ts` builds RFC 7807 bodies, but every 400/429
+  actually went out as `application/json`. Cause: a Hono gotcha — `c.json()`
+  sets its own `Content-Type` and **overwrites** the value `problemJson` had
+  set with `c.header()`. No test caught it because they only checked the JSON
+  body's `status`, never the wire media type. Fixed `problemJson` to serialise
+  with `c.body(JSON.stringify(...), status, { "Content-Type": ... })`, which
+  keeps the media type on the wire, and left a comment naming the gotcha so it
+  can't recur.
+  *Tests*: the 400 path (`openapi-rest.test.ts` unknown-fields + validation),
+  the 429 path (`openapi-rest.test.ts` rate-limit) and the 500 path
+  (`app-offline-seam.test.ts` onError) all now assert `Content-Type` matches
+  `application/problem+json` on the wire.
+  *Learning*: `c.json()` in Hono clobbers a prior `c.header("Content-Type")`.
+  For a non-default JSON media type, pass the header to `c.body(JSON.stringify)`
+  — and assert the media type, not just the body, or a contract drift stays
+  invisible.
 
 ---
 
@@ -694,7 +721,8 @@ looked".
 | 2026-08-11 | Tests that pin a fixture date but not the clock | **Found and fixed — third instance of this class.** `rates-module.test.ts` pinned `now` on the *adapters* but not on `getRates`, which stamps `ageDays` with its own clock. The assertion compared a wall-clock `ageDays` against a `NOW`-derived one; they agreed only while the real date shared a day with the fixture's `capturedAt`, then started failing the first run after midnight UTC. Confirmed pre-existing by stashing all in-flight work and reproducing on clean `HEAD`. The sibling `price-freshness.test.ts` already pinned `now` at every call site, so the fix matched an existing pattern rather than inventing one. Swept the remaining `getRates`/`createEstimate` test call sites: no others unpinned. |
 | 2026-08-11 | Unit tests that reach the live network for rates | **Found and fixed.** `create-estimate-mvp.test.ts` (all 5 `createEstimate` calls) and `tf-audit-reconciliation.test.ts` (the discovery-only case) had no offline rate seam, so each fell through to a live `getRates` fetch. The discovery-only assertion — which does no pricing math at all — timed out at 5s under full-suite load, presenting as a failure in unrelated in-flight work. Threaded the established `OFFLINE_RATES` seam (forceFallback adapters + fresh cache + pinned `now`) through both; test time dropped from 5.4s-with-timeout to ~35ms and is now deterministic. Swept every `createEstimate`-calling test: the remaining apparent gaps (`price-validation`, `capability-drivers`) spread a shared already-seamed `inputs`/`base` object, so they were never live. *Rule*: a unit test must never depend on `getRates` reaching the network — inject `ratesOptions` with `forceFallback` adapters, even when the assertion is purely structural, because a $0/no-op path still makes the fetch. |
 | 2026-08-11 | Config that enumerates test files by name (silent no-op) | **Found and fixed (REQ-14).** `vitest.config.ts` hand-listed the two shared test dirs file-by-file; a new file in either would run nowhere. A `TODO(test-discovery)` had flagged it. Globbed both dirs and added `test-discovery.test.ts` to fail if anyone reverts to enumeration. Latent, not yet firing — all files were listed — but one added test away from a false green. |
-| 2026-08-11 | API tests reaching the live network (REQ-15) | **Found and fixed the acute case.** `refreshRates is rate-limited` looped up to 15 live refresh POSTs and timed out under parallel load (passed in isolation). Rewrote it to pre-exhaust the limiter (0 fetches) and moved counting coverage to a unit test. The underlying gap — `createApp` has no rates seam, so pricing routes can only be tested live — is tracked as REQ-15 T-15.2.1 with a `TODO(REQ-15)` marker. |
+| 2026-08-11 | API tests reaching the live network (REQ-15) | **Found and fixed.** `refreshRates is rate-limited` looped up to 15 live refresh POSTs and timed out under parallel load (passed in isolation). Rewrote it to pre-exhaust the limiter (0 fetches) and moved counting coverage to a unit test. Then closed the root cause: `createApp(deps?: { ratesOptions })` now injects an offline rates seam into every pricing route (T-15.2.1), exercised in `estimate-offline.test.ts`. |
+| 2026-08-11 | Error responses sent as `application/json`, not `application/problem+json` (REQ-16) | **Found and fixed.** The OpenAPI contract and `problem.ts` promise RFC 7807, but every 400/429 went out as `application/json` because Hono's `c.json()` overwrote the Content-Type `problemJson` set via `c.header()`. Invisible because tests only checked the JSON body's `status`, never the wire media type. Surfaced by the T-15.2.1 edge test. Fixed `problemJson` to `c.body(JSON.stringify(...))`; both the 400 and 429 paths now assert the media type. *Rule*: assert the media type on error responses, not just the body — and know `c.json()` clobbers a prior `c.header("Content-Type")`. |
 | 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
 | 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
 

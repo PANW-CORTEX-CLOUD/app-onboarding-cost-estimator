@@ -221,15 +221,13 @@ describe("package 15 — OpenAPI REST", () => {
     // Exhaust the limiter directly on the key the route uses ("global"), so
     // the FIRST HTTP call is already over the limit. The previous version
     // looped up to 15 live POSTs to trip the limiter, and each pre-429
-    // request drove getRates(forceLive:true) at the real network — the route
-    // has no offline seam — so the test flaked with a 60s timeout under
-    // parallel suite load. Pre-exhausting asserts the same 429 HTTP path with
-    // zero network fetches. The limiter's counting/window behaviour is covered
-    // directly in rate-limit.test.ts.
-    // The pricing routes now also accept an injected offline rates seam
-    // (createApp({ ratesOptions }), REQ-15 T-15.2.1, exercised in
-    // app-offline-seam.test.ts), so this is no longer the only network-free
-    // HTTP assertion.
+    // request drove getRates(forceLive:true) at the real network, so the test
+    // flaked with a 60s timeout under parallel suite load. Pre-exhausting
+    // asserts the same 429 HTTP path with zero network fetches. The limiter's
+    // counting/window behaviour is covered directly in rate-limit.test.ts, and
+    // the offline seam that removes the underlying network dependency from the
+    // pricing routes now exists (REQ-15 T-15.2.1, exercised in
+    // estimate-offline.test.ts and app-offline-seam.test.ts).
     for (let i = 0; i < 10; i++) refreshRatesLimiter.check("global");
     const res = await app.request("/v1/rates/refresh", {
       method: "POST",
@@ -238,8 +236,9 @@ describe("package 15 — OpenAPI REST", () => {
     });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBeTruthy();
-    // RFC 7807 media type — regression lock: c.json() would silently downgrade
-    // this to application/json (see problemJson in app.ts).
+    // The error media type must be the RFC 7807 type the OpenAPI spec declares,
+    // not plain application/json (regression guard for the c.json() Content-Type
+    // overwrite bug fixed in problemJson).
     expect(res.headers.get("Content-Type")).toMatch(/application\/problem\+json/);
     const problem = await res.json();
     expect(problem.status).toBe(429);
