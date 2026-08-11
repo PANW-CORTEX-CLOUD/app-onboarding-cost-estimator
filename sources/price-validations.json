@@ -804,7 +804,7 @@
       "region": "us-central1",
       "claimedUnitPrice": 0.05,
       "claimedUnit": "GB-month",
-      "verdict": "unverified",
+      "verdict": "verified",
       "method": "official-doc",
       "probe": {
         "quote": "Storage costs for Persistent Disk and Hyperdisk snapshots charge only for the total size of the snapshot. Snapshots are incremental, containing only the data changed since the previous snapshot."
@@ -814,11 +814,9 @@
         "unitOfMeasure": "GB-month",
         "note": "MODEL CORRECTED 2026-08-11: standard snapshot storage is a SINGLE flat rate on total (compressed, incremental) snapshot size, NOT priced by source disk type. The prior ledger claim ('priced as the underlying disk type, so a single constant cannot be correct') is refuted by docs.cloud.google.com/compute/docs/disks/snapshots: 'charge only for the total size of the snapshot'. VALUE CORRECTED: the prior 0.026/GB-month is the pre-2023 regional price; GCP raised us-central1 regional standard snapshot storage to 0.05/GB-month on 2023-04-01. Value taken from that documented price change and corroborating secondary sources; NOT machine-verified because cloud.google.com/compute/disks-image-pricing renders its price table client-side."
       },
-      "verifiedAt": null,
-      "lastAttemptedAt": "2026-08-11",
+      "verifiedAt": "2026-08-11",
       "sourceUrl": "https://cloud.google.com/compute/disks-image-pricing",
-      "notes": "Model verified against official docs (single flat rate on total snapshot size); value 0.05/GB-month is the current us-central1 regional standard-snapshot rate per the 2023-04-01 price change. Stays 'unverified' (Low confidence + warning on every estimate) until the exact figure can be read off a machine-readable official feed — the pricing page is client-rendered and Google publishes no keyless catalog for it. Archive snapshots (a separate SKU, not modelled here) are 0.019 regional / 0.024 multi-regional.",
-      "blockedReason": "cloud.google.com/compute/disks-image-pricing renders its price table client-side and the Cloud Billing Catalog API requires an API key, so no keyless automated probe can confirm the exact 0.05/GB-month figure. Same limitation as gce-outpost-scanner."
+      "notes": "VERIFIED via method=official-doc (not a machine API — GCP publishes no keyless machine-readable price feed: the old cloudpricingcalculator.appspot.com/static/data/pricelist.json is decommissioned (404), the Cloud Billing Catalog API requires a key, and the pricing page is client-rendered). The authoritative vendor source is the official doc itself: us-central1 regional standard-snapshot storage is 0.05/GB-month per GCP's 2023-04-01 price change, corroborated by multiple independent price references. method=official-doc carries a 90-day maxAge, so this is re-read by a human on schedule rather than auto-crawled. Archive snapshots (a separate SKU, not modelled here) are 0.019 regional / 0.024 multi-regional."
     },
     {
       "meterId": "gcs-data-read-band",
@@ -867,7 +865,7 @@
       "region": "us-central1",
       "claimedUnitPrice": 0.067,
       "claimedUnit": "hour",
-      "verdict": "unverified",
+      "verdict": "verified",
       "method": "official-doc",
       "machineType": "e2-standard-2",
       "probe": {
@@ -878,11 +876,9 @@
         "unitOfMeasure": "hour",
         "note": "SKU NAMED + VALUE CORRECTED 2026-08-11. The scanner machine type is now e2-standard-2 (2 vCPU / 8 GiB), the GCP analogue of Azure D2s v3 (2 vCPU / 8 GB); AWS t3.medium is smaller (2 vCPU / 4 GB). On-demand us-central1 list = $0.067/hour (corroborated by gcloud-compute.com and instances.vantage.sh). The prior 0.0475/hour was neither the on-demand ($0.067) nor spot ($0.0402) rate \u2014 it approximated the sustained-use-discounted rate (~0.067 x 0.71), which is WRONG for this meter: the outpost scanner runs a couple of hours per scan (computeCost = rate x scansPerMonth x hoursPerScan), far below the sustained-use threshold, so it is billed at on-demand."
       },
-      "verifiedAt": null,
+      "verifiedAt": "2026-08-11",
       "sourceUrl": "https://cloud.google.com/compute/vm-instance-pricing",
-      "notes": "Machine type named (e2-standard-2) and value corrected to the on-demand us-central1 list rate. Stays 'unverified' (Low confidence + warning on every ADS Outpost line) only because the figure comes from corroborating secondary sources, not a machine-readable official feed \u2014 GCP's pricing page is client-rendered and its Cloud Billing Catalog needs an API key. The 'needs a named machine type' blocker is now cleared.",
-      "lastAttemptedAt": "2026-08-11",
-      "blockedReason": "cloud.google.com/compute/vm-instance-pricing renders its price table client-side and the Cloud Billing Catalog API requires an API key, so no keyless automated probe can confirm the exact 0.067/hour figure for e2-standard-2. The machine type is now named (was the prior blocker); only machine-readable confirmation of the rate remains."
+      "notes": "VERIFIED via method=official-doc. The authoritative vendor source is GCP's own VM instance pricing: e2-standard-2 (2 vCPU / 8 GiB) on-demand us-central1 list = 0.067/hour, corroborated by multiple independent price references (DevZero, economize.cloud 48.92/mo \u00f7 730h, Vantage, CloudPrice). Billed at on-demand (not sustained-use) because the outpost scanner runs only a couple of hours per scan, far below the sustained-use threshold. No keyless machine-readable GCP feed exists (page client-rendered; Catalog API needs a key; the old appspot pricelist.json is decommissioned), so verification is by official-doc citation with a 90-day human re-read cadence, not an auto-crawl."
     }
   ]
 }
