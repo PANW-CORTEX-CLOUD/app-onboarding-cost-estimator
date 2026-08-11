@@ -83,3 +83,7 @@ describe("package 21 — share & compare", () => {
     expect(r.ok).toBe(true);
   });
 });
+
+// Share-payload validation is covered exhaustively in
+// share-state-validation.test.ts (allowlist semantics: bad fields are dropped
+// and named via rejectedFields, not treated as a whole-payload rejection).

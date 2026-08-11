@@ -177,11 +177,20 @@ export function freezeEstimate(args: FreezeEstimateArgs): FrozenEstimateExport {
   const ageWarn = pinnedRatesAgeWarning(rateCard.capturedAt, now);
   if (ageWarn) warnings.push(ageWarn);
 
+  // unitTiers must be pinned alongside unitPrices: a graduated meter priced
+  // without its ladder silently re-prices at the first-tier rate throughout,
+  // so a reload would NOT reproduce the frozen total - defeating the whole
+  // point of freezing. Both rebuild sites (here and rateCardFromFreeze) copy
+  // field-by-field rather than spreading, so a new RateCard field has to be
+  // added in both places deliberately.
   const pinned: RateCard = {
     provider: rateCard.provider,
     region: rateCard.region,
     currency: "USD",
     unitPrices: { ...rateCard.unitPrices },
+    ...(rateCard.unitTiers
+      ? { unitTiers: structuredCloneTiers(rateCard.unitTiers) }
+      : {}),
     capturedAt: rateCard.capturedAt,
   };
 
@@ -204,6 +213,14 @@ export function freezeEstimate(args: FreezeEstimateArgs): FrozenEstimateExport {
 
 function structuredCloneInputs(inputs: EstimateInputs): EstimateInputs {
   return JSON.parse(JSON.stringify(inputs)) as EstimateInputs;
+}
+
+function structuredCloneTiers(
+  tiers: NonNullable<RateCard["unitTiers"]>,
+): NonNullable<RateCard["unitTiers"]> {
+  return JSON.parse(JSON.stringify(tiers)) as NonNullable<
+    RateCard["unitTiers"]
+  >;
 }
 
 function validateRateCard(rateCard: RateCard): void {
@@ -290,6 +307,11 @@ export function rateCardFromFreeze(payload: FrozenEstimateExport): RateCard {
     region: payload.rateCard.region,
     currency: "USD",
     unitPrices: { ...payload.rateCard.unitPrices },
+    // @see freezeEstimate — dropping the ladder here would re-price a
+    // graduated meter flat and break the reproduce-the-total guarantee.
+    ...(payload.rateCard.unitTiers
+      ? { unitTiers: structuredCloneTiers(payload.rateCard.unitTiers) }
+      : {}),
     capturedAt: payload.rateCard.capturedAt,
   };
 }

@@ -187,16 +187,6 @@ body::before {
   width: 100%;
 }
 
-.how-to-use__steps {
-  margin: 0.35rem 0 0.75rem;
-  padding-left: 1.25rem;
-  line-height: 1.45;
-}
-
-.how-to-use__steps li + li {
-  margin-top: 0.45rem;
-}
-
 .journey-intro {
   margin: 0 0 1rem;
 }

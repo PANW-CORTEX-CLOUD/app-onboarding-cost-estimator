@@ -241,4 +241,59 @@ describe("package 13 — EDGE", () => {
       expect(loaded.error).toMatch(/re-estimate/i);
     }
   });
+
+  it("pins unitTiers so a graduated meter reproduces its total on reload", () => {
+    // REGRESSION: freezeEstimate and rateCardFromFreeze both rebuild the
+    // RateCard field-by-field, and neither carried unitTiers when graduated
+    // pricing was added. A frozen ladder-priced meter would reload with no
+    // ladder and re-price flat at the first band throughout - a different
+    // total from the one that was frozen, which is exactly what freezing
+    // exists to prevent.
+    const tiered: RateCard = {
+      ...rateCard,
+      unitPrices: { "blob-hot-lrs-capacity": 0.0208 },
+      unitTiers: {
+        "blob-hot-lrs-capacity": [
+          { fromUnits: 0, unitPrice: 0.0208 },
+          { fromUnits: 51_200, unitPrice: 0.02 },
+          { fromUnits: 512_000, unitPrice: 0.0192 },
+        ],
+      },
+    };
+    const frozen = freezeEstimate({
+      result: {
+        provider: "azure",
+        lineItems: [],
+        totals: { expected: 0 },
+        confidence: "High",
+      },
+      rateCard: tiered,
+      inputs,
+      now: NOW,
+    });
+    expect(frozen.rateCard.unitTiers?.["blob-hot-lrs-capacity"]).toHaveLength(3);
+
+    const loaded = loadFrozenEstimate(JSON.stringify(frozen));
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    const pinned = rateCardFromFreeze(loaded.payload);
+    expect(pinned.unitTiers?.["blob-hot-lrs-capacity"]).toEqual(
+      tiered.unitTiers!["blob-hot-lrs-capacity"],
+    );
+
+    // EDGE: a flat rate card must not grow an empty unitTiers key.
+    const flat = freezeEstimate({
+      result: {
+        provider: "azure",
+        lineItems: [],
+        totals: { expected: 0 },
+        confidence: "High",
+      },
+      rateCard,
+      inputs,
+      now: NOW,
+    });
+    expect(flat.rateCard.unitTiers).toBeUndefined();
+    expect(rateCardFromFreeze(flat).unitTiers).toBeUndefined();
+  });
 });

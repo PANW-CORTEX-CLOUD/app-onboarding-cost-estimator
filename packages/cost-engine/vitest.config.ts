@@ -18,6 +18,13 @@ export default defineConfig({
       {
         test: {
           name: "azure",
+          // TODO(test-discovery): every other project globs a directory, but
+          // `src/providers/__tests__/` files must each be listed here by name.
+          // A new test file added there runs nowhere and reports nothing -
+          // it silently does not exist as far as `pnpm test` is concerned.
+          // Consider globbing "src/providers/__tests__/**/*.test.ts" into one
+          // project (or a dedicated "providers-shared" project) so adding a
+          // cross-provider test can't be a no-op.
           include: [
             "src/providers/azure/**/*.test.ts",
             "src/providers/__tests__/capability-meter-map.test.ts",
@@ -28,6 +35,7 @@ export default defineConfig({
             "src/providers/__tests__/meter-closure.test.ts",
             "src/providers/__tests__/capability-drivers.test.ts",
             "src/providers/__tests__/tiered-pricing-integration.test.ts",
+            "src/providers/__tests__/tf-honesty-warnings.test.ts",
           ],
         },
       },

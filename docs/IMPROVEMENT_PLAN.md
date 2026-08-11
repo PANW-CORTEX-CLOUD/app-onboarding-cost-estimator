@@ -133,11 +133,39 @@ still produce numbers.
 
 ### UC-2.2 — GCP ADS snapshots are priced from the source disk type
 
-- **T-2.2.1** `todo` Replace the flat `pd-snapshot-storage` constant with a
+- **T-2.2.1** `blocked` Replace the flat `pd-snapshot-storage` constant with a
   `sourceDiskType` input (pd-standard | pd-balanced | pd-ssd), since GCP prices
   standard snapshots as the underlying disk.
   *Tests*: each disk type yields its own rate; **edge** an unknown disk type
   fails closed rather than defaulting to the cheapest.
+
+  **Blocked on vendor verification, deliberately.** The premise above —
+  "priced as the underlying disk" — is an *unverified claim carried in this
+  plan*, not something read off a Google page. Implementing a `sourceDiskType`
+  input on top of it would bake an assumption into the pricing model and give
+  it the appearance of rigour, which is precisely the failure this repo exists
+  to prevent. T-2.1.1 is the cautionary precedent: research **overturned** the
+  planned ACR fix, and building to the plan would have shipped a second wrong
+  number.
+  Three things must come off an official page before any code changes: (1)
+  whether the snapshot rate genuinely varies by source disk type or is priced
+  independently of it; (2) whether snapshots bill on **incremental** stored
+  bytes rather than full disk size — this dominates the estimate and no
+  `sourceDiskType` refinement matters if the quantity is wrong; (3) current
+  regional vs multi-regional $/GB-month. If (1) is false, this task should be
+  **closed, not implemented**.
+
+### UC-2.3 — The GCP scanner VM is a named SKU
+
+- **T-2.3.1** `blocked` (was `todo`) Name the machine type behind
+  `gce-outpost-scanner` and record the quote, clearing the last `unverified`
+  ledger row and its `blockedReason`.
+  Blocked for the same reason: the candidate (`e2-standard-2`, as the analogue
+  of Azure D2s v3 / AWS t3.medium) and its on-demand rate must come from
+  official GCP pricing, not from recall. Note when unblocking that D2s v3 is
+  2 vCPU/8 GB while t3.medium is 2 vCPU/4 GB, so "the analogue" is already
+  ambiguous and the choice needs stating, not assuming.
+  *Tests*: ledger gate stops reporting a blocked row.
 
 ### UC-2.3 — The GCP scanner VM is a named SKU
 
@@ -269,8 +297,18 @@ means adding `console.log` and removing it again.
   is silent by default and switched on with `DEBUG=cost:*` / `?debug=`.
   *Tests*: silent by default; namespace filtering; **edge** a logger call with a
   throwing serialiser must not break an estimate.
-- **T-7.1.2** `todo` Instrument the estimate pipeline: resolved volume, per
-  capability meter selection, rate source and verification verdict.
+- **T-7.1.2** `done` Instrumented the estimate pipeline under the
+  `cost:estimate` namespace: the Terraform gate's requested→effective→excluded
+  capability sets, the rate card's source/capturedAt/ageDays and **which meters
+  carry a tier ladder**, the resolved stream volume next to the `accountCount`
+  and override flag that produced it, one line per priced meter with amount,
+  confidence and verification verdict, and an `info`-level total.
+  Those are the four things that decide a total and none of them are visible
+  in the response, so "why is this number what it is?" previously meant adding
+  `console.log`. Every message is a thunk, so it costs nothing when off.
+  *Tests*: verified silent with `DEBUG` unset; verified the full trace renders
+  under `DEBUG=cost:*` against a real Azure audit+DSPM estimate, and that the
+  traced total equals the returned total.
 
 ## REQ-8 — Public surface should be the surface we mean  `done`
 
@@ -420,18 +458,30 @@ re-declared elsewhere) and hand-mirrored copies within the same package.
   *Tests*: `providers/streams/__tests__/audit-stream.test.ts`, unchanged,
   still passes against the re-export.
 
-### UC-11.5 — A hand-mirrored warning-prefix list must not silently drift  `todo`
+### UC-11.5 — A hand-mirrored warning-prefix list must not silently drift  `done`
 
-- **T-11.5.1** `todo` `apps/web`'s `tfHonestyConstants.ts` is a
-  self-acknowledged manual mirror of cost-engine's
-  `tf-audit-reconciliation.ts` warning prefixes ("Mirror of cost-engine
-  honesty warning prefixes for UI filtering. Keep in sync with…"), forced
-  by the same web/engine boundary rule as T-11.3.1, with no test asserting
-  the two actually stay equal today.
-  *Tests*: a drift-guard test (same idea as `check-openapi-drift.mjs`) that
-  imports both and asserts prefix-for-prefix equality; **edge** adding a new
-  warning prefix to one side without the other must fail the test, not
-  silently ship.
+- **T-11.5.1** `done` `scripts/check-tf-honesty-drift.mjs` imports **both**
+  `apps/web`'s `tfHonestyConstants.ts` and the engine's
+  `tf-audit-reconciliation.ts` as real modules (via
+  `--experimental-strip-types`) and compares the values the programs actually
+  use, rather than scraping either as text. Runs inside `pnpm test`.
+  The mirror is forced by the web/engine boundary rule (T-11.3.1) and cannot
+  be collapsed; what it no longer is, is unchecked. The failure it prevents is
+  silent by construction: the UI matches these strings to decide whether to
+  render the honesty banner, so a reworded prefix would not throw — the
+  disclosure would just stop appearing, with every test still green.
+  Strings compare exactly; the meter allowlist compares as a **set**, so a
+  harmless reorder is not a false alarm but an added/removed meter is.
+  *Tests*: verified by mutation, not assumption — reworded the prefix on one
+  side (caught, exit 1), removed a meter from one side (caught, exit 1),
+  in-sync (exit 0). Exit codes checked directly, since a gate that prints an
+  error but exits 0 would pass CI while appearing to work.
+
+  *Learning*: `edge-plus-hardening.test.ts` bans the literal string
+  `packages/cost-engine/src/providers/` anywhere under `apps/web/src` to stop
+  deep imports — and it matches **file text, not imports**, so even naming the
+  path in a doc comment trips it. Refer to engine files by basename from web
+  code.
 
 ## REQ-13 — The API must be debuggable without adding console.log  `done`
 
@@ -492,6 +542,13 @@ looked".
 | 2026-08-10 | `as any` / unchecked casts | None in engine, API or web. |
 | 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. |
 | 2026-08-10 | Unexplained magic numbers | Moved to `estimator-defaults.ts` with provenance per constant (REQ-5). |
+| 2026-08-11 | Tests that pin a fixture date but not the clock | **Found and fixed — third instance of this class.** `rates-module.test.ts` pinned `now` on the *adapters* but not on `getRates`, which stamps `ageDays` with its own clock. The assertion compared a wall-clock `ageDays` against a `NOW`-derived one; they agreed only while the real date shared a day with the fixture's `capturedAt`, then started failing the first run after midnight UTC. Confirmed pre-existing by stashing all in-flight work and reproducing on clean `HEAD`. The sibling `price-freshness.test.ts` already pinned `now` at every call site, so the fix matched an existing pattern rather than inventing one. Swept the remaining `getRates`/`createEstimate` test call sites: no others unpinned. |
+
+**Standing rule this class earned**: when a test pins a clock, pin it on *every*
+collaborator that reads one — pinning the adapter but not the orchestrator
+leaves a test that passes today and fails on a date boundary, which reads as a
+regression in whatever change happens to be in flight. Prior instances: the two
+`rate-pinning` suites (30 days after their fixture `capturedAt`).
 
 # Part C — Ideation
 

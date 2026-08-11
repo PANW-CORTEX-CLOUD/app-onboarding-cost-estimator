@@ -22,6 +22,10 @@ import {
 import { runEstimate } from "../features/run-estimate/runEstimate.ts";
 import { ProviderSelector } from "../widgets/ProviderSelector/ProviderSelector.tsx";
 import { ESTIMATOR_BOOTSTRAP_SESSION_KEY } from "../shared/lib/estimator-bootstrap.ts";
+import {
+  SHARE_LAST_KEY,
+  saveLastShareState,
+} from "../shared/lib/safe-storage.ts";
 
 function mockEstimate(provider: "azure" | "aws" | "gcp") {
   return {
@@ -247,5 +251,174 @@ describe("package 17 — FSD UI", () => {
       expect.anything(),
     );
     expect(window.location.search).toContain("offlineEngine=1");
+  });
+});
+
+describe("freeze rates snapshot", () => {
+  beforeEach(() => {
+    clearEstimateCache();
+    sessionStorage.setItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY, "1");
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    cleanup();
+    sessionStorage.removeItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY);
+  });
+
+  it("calls the freeze endpoint and shows the server-pinned metadata", async () => {
+    // The button used to only stamp ratesAsOf/modelVersion client-side, so it
+    // pinned nothing and the quote could not be reproduced. It must now reach
+    // the API and render what the server actually froze.
+    const client = createMockClient();
+    const basePost = (
+      client.POST as unknown as {
+        getMockImplementation: () => (path: string, init?: unknown) => unknown;
+      }
+    ).getMockImplementation();
+    (client.POST as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string, init?: unknown) => {
+        if (path === "/estimates/freeze") {
+          return {
+            data: {
+              schemaVersion: 1,
+              provider: "azure",
+              modelVersion: "9.9.9",
+              ratesAsOf: "2026-07-01T00:00:00.000Z",
+              inputHash: "cafebabe",
+              frozenAt: "2026-08-10T00:00:00.000Z",
+              rateCard: {
+                provider: "azure",
+                region: "eastus",
+                currency: "USD",
+                unitPrices: { "eh-standard-tu": 0.03 },
+                capturedAt: "2026-07-01T00:00:00.000Z",
+              },
+              inputs: {},
+              lineItems: [],
+              totals: { expected: 12.34 },
+              confidence: "Med",
+              disclaimer: "x".repeat(30),
+              warnings: [],
+            },
+            error: undefined,
+            response: new Response(null, { status: 200 }),
+          };
+        }
+        return basePost(path, init);
+      },
+    );
+
+    render(<App client={client} />);
+    fireEvent.click(screen.getByTestId("run-estimate"));
+    // The freeze button lives in the collapsed "Assumptions & run" step.
+    fireEvent.click(screen.getByTestId("journey-step-tab-run"));
+    await waitFor(() => {
+      expect(screen.getByTestId("freeze-rates")).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByTestId("freeze-rates"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("frozen-meta")).toHaveTextContent("9.9.9");
+    });
+    expect(client.POST).toHaveBeenCalledWith(
+      "/estimates/freeze",
+      expect.objectContaining({
+        body: expect.objectContaining({ provider: "azure" }),
+      }),
+    );
+  });
+
+  it("EDGE: a failed freeze surfaces an error instead of claiming success", async () => {
+    const client = createMockClient();
+    const basePost = (
+      client.POST as unknown as {
+        getMockImplementation: () => (path: string, init?: unknown) => unknown;
+      }
+    ).getMockImplementation();
+    (client.POST as ReturnType<typeof vi.fn>).mockImplementation(
+      async (path: string, init?: unknown) => {
+        if (path === "/estimates/freeze") {
+          return {
+            data: undefined,
+            error: {
+              status: 400,
+              title: "Freeze failed",
+              detail: "critical-stale rates require Ack before export",
+            },
+            response: new Response(null, { status: 400 }),
+          };
+        }
+        return basePost(path, init);
+      },
+    );
+
+    render(<App client={client} />);
+    fireEvent.click(screen.getByTestId("run-estimate"));
+    // The freeze button lives in the collapsed "Assumptions & run" step.
+    fireEvent.click(screen.getByTestId("journey-step-tab-run"));
+    await waitFor(() => {
+      expect(screen.getByTestId("freeze-rates")).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByTestId("freeze-rates"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("freeze-error")).toHaveTextContent(
+        /require Ack/i,
+      );
+    });
+    expect(screen.queryByTestId("frozen-meta")).toBeNull();
+  });
+});
+
+describe("last-shared-state restore on cold load", () => {
+  beforeEach(() => {
+    clearEstimateCache();
+    localStorage.removeItem(SHARE_LAST_KEY);
+    // Cold load: no bootstrap sentinel, so the restore/demo-preset branch runs.
+    sessionStorage.removeItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY);
+    window.history.replaceState({}, "", "/");
+  });
+
+  afterEach(() => {
+    cleanup();
+    localStorage.removeItem(SHARE_LAST_KEY);
+    sessionStorage.removeItem(ESTIMATOR_BOOTSTRAP_SESSION_KEY);
+  });
+
+  it("restores the last shared inputs instead of the first-run demo preset", async () => {
+    saveLastShareState({
+      v: 1,
+      provider: "gcp",
+      region: "us-central1",
+      capabilities: { auditLogs: true },
+      volume: { accountCount: 42 },
+    });
+    render(<App client={createMockClient()} />);
+    await waitFor(() => {
+      expect(readProviderFromSearch(window.location.search)).toBe("gcp");
+    });
+  });
+
+  it("restores the sound parts of a partly-invalid saved blob and drops the rest", async () => {
+    // EDGE: written by an older build, or hand-edited. validateShareState is
+    // an allowlist, so a bad field is dropped and named rather than sinking
+    // the whole restore - the provider still comes back, the negative estate
+    // does not reach a state setter.
+    saveLastShareState({
+      v: 1,
+      provider: "gcp",
+      region: "us-central1",
+      capabilities: { auditLogs: true },
+      volume: { accountCount: 7, dataEstateGB: -999 },
+    });
+    render(<App client={createMockClient()} />);
+    await waitFor(() => {
+      expect(readProviderFromSearch(window.location.search)).toBe("gcp");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("share-message")).toHaveTextContent(
+        /Ignored invalid dataEstateGB/,
+      );
+    });
   });
 });

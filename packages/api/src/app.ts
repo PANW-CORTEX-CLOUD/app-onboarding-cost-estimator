@@ -20,6 +20,8 @@ import {
   projectCosts,
   getRates,
   createEstimate,
+  freezeEstimate,
+  loadFrozenEstimate,
   azureCapabilityMeterMap,
   awsCapabilityMeterMap,
   gcpCapabilityMeterMap,
@@ -30,7 +32,9 @@ import {
   CloudProviderSchema,
   CreateEstimateRequestSchema,
   CreateProjectionRequestSchema,
+  FreezeEstimateRequestSchema,
   RefreshRatesRequestSchema,
+  ReloadFrozenEstimateRequestSchema,
 } from "./schemas.ts";
 
 export const API_VERSION = "0.2.0";
@@ -251,6 +255,111 @@ export function createApp(): Hono {
       logRejection(c, `estimate: ${detail}`);
       return problemJson(c, problem(400, "Estimate failed", detail), 400);
     }
+  });
+
+  /**
+   * Freeze an estimate: re-run it server-side and pin the exact rate card it
+   * priced with, so the same payload reproduces the same total later even
+   * after live rates move.
+   */
+  app.post("/v1/estimates/freeze", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return problemJson(
+        c,
+        problem(400, "Invalid JSON", "request body must be JSON"),
+        400,
+      );
+    }
+    const parsed = FreezeEstimateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return problemJson(
+        c,
+        problem(400, "Validation failed", parsed.error.message),
+        400,
+      );
+    }
+    const { ackCriticalStale, ...estimateRequest } = parsed.data;
+    try {
+      const estimate = await createEstimate(estimateRequest);
+      // freezeEstimate throws when rates are critically stale without an ack -
+      // that is the fail-closed export gate, so it must surface as a 400 the
+      // caller can act on, not be swallowed into an unpinned success.
+      const frozen = freezeEstimate({
+        result: {
+          provider: estimate.provider,
+          lineItems: estimate.lineItems,
+          totals: estimate.totals,
+          confidence: estimate.confidence,
+        },
+        rateCard: estimate.rateCard,
+        inputs: {
+          provider: estimateRequest.provider,
+          region: estimateRequest.region,
+          capabilities: estimateRequest.capabilities,
+          ...(estimateRequest.volume
+            ? { volume: estimateRequest.volume }
+            : {}),
+        },
+        ratesSource: estimate.ratesSource,
+        ...(ackCriticalStale !== undefined ? { ackCriticalStale } : {}),
+      });
+      return c.json(frozen);
+    } catch (e) {
+      return problemJson(
+        c,
+        problem(
+          400,
+          "Freeze failed",
+          e instanceof Error ? e.message : "unknown error",
+        ),
+        400,
+      );
+    }
+  });
+
+  /**
+   * Reload a frozen estimate. A corrupt payload, a wrong schema version, or a
+   * modelVersion the engine has moved past all fail closed with a named
+   * reason rather than silently re-pricing at today's rates.
+   */
+  app.post("/v1/estimates/reload", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return problemJson(
+        c,
+        problem(400, "Invalid JSON", "request body must be JSON"),
+        400,
+      );
+    }
+    const parsed = ReloadFrozenEstimateRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return problemJson(
+        c,
+        problem(400, "Validation failed", parsed.error.message),
+        400,
+      );
+    }
+    const loaded = loadFrozenEstimate(parsed.data.payload, {
+      ...(parsed.data.requireCurrentModelVersion !== undefined
+        ? { requireCurrentModelVersion: parsed.data.requireCurrentModelVersion }
+        : {}),
+    });
+    if (!loaded.ok) {
+      // The failure code (corrupt | invalid_schema | model_version_mismatch)
+      // rides in the title so a client can tell "this file is damaged" from
+      // "this quote predates the current pricing model" without parsing prose.
+      return problemJson(
+        c,
+        problem(400, `Reload failed: ${loaded.code}`, loaded.error),
+        400,
+      );
+    }
+    return c.json({ payload: loaded.payload, warnings: loaded.warnings });
   });
 
   app.post("/v1/projections", async (c) => {

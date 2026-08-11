@@ -14,10 +14,7 @@ import {
   EstimateApiError,
 } from "../../features/run-estimate/runEstimate.ts";
 import { fetchCapabilities } from "../../features/toggle-capabilities/fetchCapabilities.ts";
-import {
-  freezeFromEstimate,
-  type FrozenRatesMeta,
-} from "../../features/freeze-rates/freezeFromEstimate.ts";
+import type { FrozenRatesMeta } from "../../features/freeze-rates/freezeFromEstimate.ts";
 import {
   initialOfflineEngineEnabled,
   setOfflineEngineEnabled,
@@ -108,9 +105,13 @@ import { jumpToInputTestId } from "../../shared/lib/cost-driver-explain.ts";
 import {
   buildShareUrl,
   readShareFromSearch,
+  validateShareState,
   type ShareState,
 } from "../../shared/lib/share-state.ts";
-import { saveLastShareState } from "../../shared/lib/safe-storage.ts";
+import {
+  loadLastShareState,
+  saveLastShareState,
+} from "../../shared/lib/safe-storage.ts";
 import { getDemoPreset } from "../../features/demo-presets/demoPresets.ts";
 import { CLOUD_PROVIDERS } from "../../shared/model/cloud-provider.ts";
 import { deriveVolumeFromAccounts } from "../../shared/lib/volume-elasticity.ts";
@@ -204,6 +205,8 @@ export function EstimatorPage() {
     useState<ExportFreshness | null>(null);
   const [ackCriticalStale, setAckCriticalStale] = useState(false);
   const [frozen, setFrozen] = useState<FrozenRatesMeta | null>(null);
+  const [freezing, setFreezing] = useState(false);
+  const [freezeError, setFreezeError] = useState<string | null>(null);
   const [offlineEngine, setOfflineEngine] = useState(() =>
     initialOfflineEngineEnabled(),
   );
@@ -315,15 +318,8 @@ export function EstimatorPage() {
     ],
   );
 
-  // Package 21 — restore share URL on load (no server-side PII).
-  useEffect(() => {
-    const parsed = readShareFromSearch();
-    if (!parsed) return;
-    if (!parsed.ok) {
-      setToast(`Share link warning: ${parsed.error}`);
-      return;
-    }
-    const s = parsed.state;
+  /** Apply a validated share state to every input setter. */
+  const applyShareState = useCallback((s: ShareState) => {
     setProvider(s.provider);
     writeProviderToUrl(s.provider);
     setRegion(s.region);
@@ -343,15 +339,36 @@ export function EstimatorPage() {
     if (s.volume.packageCount != null) setPackageCount(s.volume.packageCount);
     if (s.volume.egressGB != null) setEgressGB(s.volume.egressGB);
     if (s.mode) setCompareMode(s.mode);
-    // Dropped fields must be named: silently changing someone's numbers is
-    // worse than refusing them.
-    const dropped = parsed.rejectedFields ?? [];
-    setShareMsg(
-      dropped.length
-        ? `Restored inputs from share URL. Ignored invalid ${dropped.join(", ")} — using defaults for ${dropped.length === 1 ? "it" : "those"}.`
-        : "Restored inputs from share URL.",
-    );
   }, []);
+
+  /**
+   * Dropped fields must be named: silently changing someone's numbers is
+   * worse than refusing them. Shared by both restore paths (share URL and
+   * the local last-shared-state backup) so neither can quietly skip it.
+   */
+  const restoredMessage = useCallback(
+    (source: string, rejectedFields?: string[]) => {
+      const dropped = rejectedFields ?? [];
+      return dropped.length
+        ? `${source} Ignored invalid ${dropped.join(", ")} — using defaults for ${dropped.length === 1 ? "it" : "those"}.`
+        : source;
+    },
+    [],
+  );
+
+  // Package 21 — restore share URL on load (no server-side PII).
+  useEffect(() => {
+    const parsed = readShareFromSearch();
+    if (!parsed) return;
+    if (!parsed.ok) {
+      setToast(`Share link warning: ${parsed.error}`);
+      return;
+    }
+    applyShareState(parsed.state);
+    setShareMsg(
+      restoredMessage("Restored inputs from share URL.", parsed.rejectedFields),
+    );
+  }, [applyShareState, restoredMessage]);
 
   const focusAuditDriver = useCallback(() => {
     setJourneyModeAndUrl("cost");
@@ -397,6 +414,29 @@ export function EstimatorPage() {
       typeof window !== "undefined" ? window.location.search : "";
     if (!shouldBootstrapAzureAudit(search)) return;
     markEstimatorBootstrapped();
+
+    // A share link is copied far more often than it is kept. saveLastShareState
+    // has always written a local backup on every copy; this is the read half,
+    // so losing the URL no longer means retyping the inputs. Validated rather
+    // than cast, because this blob may have been written by an older build
+    // with a different shape. Preferred over the demo preset: someone with a
+    // saved state is returning, not arriving.
+    const saved = loadLastShareState<unknown>();
+    if (saved) {
+      const parsed = validateShareState(saved);
+      if (parsed.ok) {
+        applyShareState(parsed.state);
+        setShareMsg(
+          restoredMessage(
+            "Restored your last shared inputs.",
+            parsed.rejectedFields,
+          ),
+        );
+        setPresetNonce((n) => n + 1);
+        return;
+      }
+    }
+
     const preset = getDemoPreset("azure-audit");
     setProvider(preset.provider);
     writeProviderToUrl(preset.provider);
@@ -418,7 +458,7 @@ export function EstimatorPage() {
     setVmCount(preset.volume.vmCount ?? 0);
     setAvgUsedDiskGB(preset.volume.avgUsedDiskGB ?? 0);
     setPresetNonce((n) => n + 1);
-  }, []);
+  }, [applyShareState, restoredMessage]);
 
   const currentShareState = useCallback((): ShareState => {
     return {
@@ -1147,15 +1187,83 @@ export function EstimatorPage() {
     setOfflineEngineEnabled(checked);
   }
 
-  function onFreeze() {
+  /**
+   * Freeze the current estimate server-side and download the pinned payload.
+   *
+   * Previously this only stamped ratesAsOf/modelVersion locally: the button
+   * said "freeze" but nothing was actually pinned, so the quote could not be
+   * reproduced later. It now calls /estimates/freeze, which re-runs the
+   * estimate and pins the rate card it priced with, and hands the user the
+   * file that /estimates/reload can replay.
+   */
+  async function onFreeze() {
     if (!estimate) return;
-    setFrozen(
-      freezeFromEstimate({
-        ratesAsOf: estimate.ratesAsOf,
-        modelVersion: estimate.modelVersion,
-        inputHash: estimate.inputHash,
-      }),
-    );
+    setFreezeError(null);
+    setFreezing(true);
+    try {
+      const { data, error } = await client.POST("/estimates/freeze", {
+        body: {
+          provider,
+          region,
+          capabilities: caps,
+          tfMode,
+          monthHours,
+          // Same volume the estimate was run with - freezing a different
+          // shape would pin a quote the user never saw.
+          volume: {
+            accountCount,
+            monthlyActiveUsers: mau,
+            logIntensity,
+            overrideStreamMetrics,
+            ingressGBPerDay,
+            peakMBps,
+            peakEventsPerSec,
+            avgStoredGB,
+            vmCount,
+            avgUsedDiskGB,
+            dataEstateGB,
+            pctScanned,
+            scansPerMonth,
+            imageCount,
+            avgImageGB,
+            packageCount,
+            egressGB,
+            avgObjectSizeMB,
+            assumedEventBytes,
+          },
+          ...(ackCriticalStale ? { ackCriticalStale: true } : {}),
+        },
+      });
+      if (error || !data) {
+        // Fail closed and say why - a freeze that silently produced nothing
+        // would leave the user believing they have a reproducible quote.
+        const detail =
+          (error as { detail?: string; title?: string } | undefined)?.detail ??
+          (error as { title?: string } | undefined)?.title ??
+          "Freeze failed.";
+        setFreezeError(detail);
+        return;
+      }
+      setFrozen({
+        ratesAsOf: data.ratesAsOf,
+        modelVersion: data.modelVersion,
+        inputHash: data.inputHash,
+        frozenAt: data.frozenAt,
+      });
+      downloadBlob(
+        `cortex-frozen-estimate-${data.provider}-${data.inputHash}.json`,
+        new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      setExportMsg("Frozen estimate downloaded — reload it to reproduce this quote.");
+    } catch (e) {
+      setFreezeError(
+        e instanceof Error ? e.message : "Freeze failed (network error).",
+      );
+    } finally {
+      setFreezing(false);
+    }
   }
 
   function onDemoApply(preset: DemoPreset) {
@@ -1668,16 +1776,23 @@ export function EstimatorPage() {
                         </label>
                         <button
                           type="button"
-                          onClick={onFreeze}
-                          disabled={!estimate}
+                          onClick={() => void onFreeze()}
+                          disabled={!estimate || freezing}
                           data-testid="freeze-rates"
-                          title="Pin ratesAsOf + modelVersion on the current estimate"
+                          title="Pin this estimate's rate card and download a payload that reproduces it"
                         >
-                          Freeze rates snapshot
+                          {freezing
+                            ? "Freezing…"
+                            : "Freeze rates snapshot"}
                         </button>
                         {fromCache ? (
                           <p data-testid="cached-estimate-note">
                             Showing a cached estimate — not a fresh API result.
+                          </p>
+                        ) : null}
+                        {freezeError ? (
+                          <p role="alert" data-testid="freeze-error">
+                            {freezeError}
                           </p>
                         ) : null}
                         {frozen ? (

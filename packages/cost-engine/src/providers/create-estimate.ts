@@ -56,6 +56,22 @@ import {
   verificationWarnings,
   verifyMeter,
 } from "./rates/price-validation.ts";
+import { createLogger } from "../core/debug-log.ts";
+
+/**
+ * Pipeline trace for "why is this total what it is?".
+ *
+ * The four things that decide a total are all invisible in the response:
+ * which capabilities survived the Terraform gate, what volume the
+ * elasticities resolved to, where the rates came from, and which meters each
+ * estimator picked. Answering that used to mean adding `console.log` and
+ * deleting it again — the exact workflow `core/debug-log.ts` exists to end.
+ *
+ * Enable with `DEBUG=cost:estimate` (or `cost:*`) in Node, `?debug=cost:*` in
+ * the browser. Silent and allocation-free otherwise: every message is a thunk,
+ * so nothing is formatted or joined unless a sink is listening.
+ */
+const log = createLogger("cost:estimate");
 
 export type CreateEstimateRequest = {
   provider: CloudProvider;
@@ -139,6 +155,19 @@ export type CreateEstimateResponse = EstimateResult & {
    * Lets a reader tell their own numbers from the tool's guesses.
    */
   appliedDefaults: AppliedDefault[];
+  /**
+   * The exact card these line items were priced from.
+   *
+   * Exposed so a caller that wants to freeze this estimate
+   * (@see core/rate-pinning.ts) pins the card that actually produced the
+   * total, rather than re-fetching and risking a different one - a live
+   * refresh between the two calls would otherwise freeze rates that never
+   * matched the frozen number.
+   *
+   * Not part of the HTTP response body: packages/api forwards named fields
+   * and deliberately does not return rate internals from /v1/estimates.
+   */
+  rateCard: RateCard;
 };
 
 /** Worst-case (most conservative) confidence across all line items: Low > Med > High. */
@@ -191,6 +220,18 @@ export async function createEstimate(
   const gate = gateCapabilitiesByTf(provider, requestedCaps, tfMode);
   const caps = gate.effective;
   warnings.push(...gate.warnings);
+  log.debug(
+    () =>
+      `${provider}/${region} tfMode=${tfMode} requested=[${Object.keys(requestedCaps)
+        .filter((k) => requestedCaps[k as keyof typeof requestedCaps] === true)
+        .join(",")}] effective=[${Object.keys(caps)
+        .filter((k) => caps[k as keyof typeof caps] === true)
+        .join(",")}]${
+        gate.excluded.length
+          ? ` excluded=[${gate.excluded.map((e) => e.capability).join(",")}]`
+          : ""
+      }`,
+  );
   if (vol.assumedEventBytes !== undefined && vol.assumedEventBytes <= 0) {
     throw new Error(
       `assumedEventBytes must be > 0, got ${vol.assumedEventBytes}`,
@@ -217,6 +258,13 @@ export async function createEstimate(
       `RateCard provider '${rates.provider}' does not match request '${provider}'`,
     );
   }
+  // Rate provenance is the first thing to check when a total looks wrong:
+  // a fallback card and a live card can give different answers, and which
+  // meters carry a tier ladder decides whether large volumes graduate.
+  log.debug(() => {
+    const tiered = Object.keys(rates.unitTiers ?? {});
+    return `rates source=${ratesResult.ratesSource} capturedAt=${rates.capturedAt} ageDays=${ratesResult.ageDays} meters=${Object.keys(rates.unitPrices).length} tiered=[${tiered.join(",")}]`;
+  });
 
   const accountCount = defaults.resolve(
     "volume.accountCount",
@@ -250,6 +298,13 @@ export async function createEstimate(
       "Stream volume derived from accountCount elasticities; set overrideStreamMetrics=true to lock explicit ingress/peak",
     );
   }
+  // The numbers actually priced, after elasticities. When a user says "I typed
+  // 10 GB/day but the total looks like 40", this line is the answer: unless
+  // overrideStreamMetrics is set, accountCount scaling wins over the field.
+  log.debug(
+    () =>
+      `volume accountCount=${accountCount} override=${overrideStreamMetrics} → ingressGBPerDay=${resolvedVol.ingressGBPerDay} peakMBps=${resolvedVol.peakMBps} peakEventsPerSec=${resolvedVol.peakEventsPerSec}`,
+  );
 
   const lineItems: LineItem[] = [];
   let streamIngressGbPerDay = resolvedVol.ingressGBPerDay;
@@ -444,6 +499,17 @@ export async function createEstimate(
       now,
     ),
   );
+  // One line per priced meter with its amount and verification verdict. This
+  // is the ledger a reviewer reads to find which capability contributed what,
+  // and which numbers are vendor-backed rather than modelled.
+  for (const item of verifiedLineItems) {
+    log.debug(
+      () =>
+        `line ${item.capability}/${item.meterId} = $${item.amount} confidence=${item.confidence} verdict=${item.verification?.verdict ?? "none"}${
+          item.verification?.trusted === false ? " (not vendor-backed)" : ""
+        }`,
+    );
+  }
 
   const estimateInputs: EstimateInputs = {
     provider,
@@ -468,6 +534,12 @@ export async function createEstimate(
   // AC (pkg 19): Low-confidence capabilities expose low/expected/high bands.
   const totals =
     confidence === "Low" ? bandFromExpected(expected) : { expected };
+  log.info(
+    () =>
+      `total $${expected} across ${verifiedLineItems.length} line(s), confidence=${confidence}${
+        confidence === "Low" ? " (banded 0.5x/2x)" : ""
+      }, ${warnings.length} warning(s)`,
+  );
 
   return {
     provider,
@@ -488,5 +560,6 @@ export async function createEstimate(
     tfMode,
     excludedCapabilities: gate.excluded,
     appliedDefaults: defaults.list(),
+    rateCard: rates,
   };
 }
