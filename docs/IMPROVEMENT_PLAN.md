@@ -53,6 +53,7 @@ to find one.
 | [REQ-11](#req-11--user-editable-state-must-be-validated-as-strictly-as-the-api-that-consumes-it) | User-editable state must be validated as strictly as the API that consumes it | `done` |
 | [REQ-12](#req-12--a-rate-s-source-must-not-change-the-answer) | A rate's source must not change the answer | `done` |
 | [REQ-13](#req-13--the-api-must-be-debuggable-without-adding-console-log) | The API must be debuggable without adding console.log | `doing` |
+| [REQ-14](#req-14--a-test-must-not-be-able-to-silently-not-run) | A test must not be able to silently not-run | `done` |
 
 ---
 
@@ -548,6 +549,34 @@ re-declared elsewhere) and hand-mirrored copies within the same package.
   **edge** both schema and engine rejections log their reason. **e2e** verified
   against a running API with `DEBUG=cost:*`.
 
+## REQ-14 — A test must not be able to silently not-run  `done`
+
+The worst failure a test can have is not to run: `pnpm test` stays green while
+none of its assertions execute, which looks exactly like success.
+
+### UC-14.1 — A test file added to a shared directory is actually executed
+
+`vitest.config.ts` globs each per-provider directory, but the two cross-cutting
+test directories (`src/providers/__tests__/`, `src/__tests__/`) were enumerated
+**file by file**. A new test dropped into either that no `include` matched ran
+nowhere and reported nothing. A pre-existing `TODO(test-discovery)` flagged the
+trap; all files happened to be listed, so it was latent, not yet firing.
+
+- **T-14.1.1** `done` Replaced both hand-lists with directory globs
+  (`src/providers/__tests__/**/*.test.ts` under a new `providers-shared`
+  project; `src/__tests__/**/*.test.ts` under `monorepo`). Coverage-neutral:
+  38→39 files and 354→357 tests, the delta being the guard below — no existing
+  test dropped or double-ran.
+  *Tests*: `src/__tests__/test-discovery.test.ts` (new) asserts every physical
+  `*.test.ts` under the two shared dirs is matched by a config `include` glob,
+  and that none is listed by literal name. **Verified by mutation**: reverting
+  a glob to a single-file listing makes the guard fail with the exact files
+  that would "run nowhere"; restored, it passes. The guard is itself in a
+  globbed dir, so it only runs because the fix works.
+  *Learning*: a config that enumerates files by name is a silent-no-op waiting
+  to happen. Glob the directory, and add a test that fails if anyone reverts to
+  enumeration — the guarantee has to live in a test, not a comment.
+
 ---
 
 ## Sweep record
@@ -567,6 +596,8 @@ looked".
 | 2026-08-10 | Unexplained magic numbers | Moved to `estimator-defaults.ts` with provenance per constant (REQ-5). |
 | 2026-08-11 | Tests that pin a fixture date but not the clock | **Found and fixed — third instance of this class.** `rates-module.test.ts` pinned `now` on the *adapters* but not on `getRates`, which stamps `ageDays` with its own clock. The assertion compared a wall-clock `ageDays` against a `NOW`-derived one; they agreed only while the real date shared a day with the fixture's `capturedAt`, then started failing the first run after midnight UTC. Confirmed pre-existing by stashing all in-flight work and reproducing on clean `HEAD`. The sibling `price-freshness.test.ts` already pinned `now` at every call site, so the fix matched an existing pattern rather than inventing one. Swept the remaining `getRates`/`createEstimate` test call sites: no others unpinned. |
 | 2026-08-11 | Unit tests that reach the live network for rates | **Found and fixed.** `create-estimate-mvp.test.ts` (all 5 `createEstimate` calls) and `tf-audit-reconciliation.test.ts` (the discovery-only case) had no offline rate seam, so each fell through to a live `getRates` fetch. The discovery-only assertion — which does no pricing math at all — timed out at 5s under full-suite load, presenting as a failure in unrelated in-flight work. Threaded the established `OFFLINE_RATES` seam (forceFallback adapters + fresh cache + pinned `now`) through both; test time dropped from 5.4s-with-timeout to ~35ms and is now deterministic. Swept every `createEstimate`-calling test: the remaining apparent gaps (`price-validation`, `capability-drivers`) spread a shared already-seamed `inputs`/`base` object, so they were never live. *Rule*: a unit test must never depend on `getRates` reaching the network — inject `ratesOptions` with `forceFallback` adapters, even when the assertion is purely structural, because a $0/no-op path still makes the fetch. |
+| 2026-08-11 | Config that enumerates test files by name (silent no-op) | **Found and fixed (REQ-14).** `vitest.config.ts` hand-listed the two shared test dirs file-by-file; a new file in either would run nowhere. A `TODO(test-discovery)` had flagged it. Globbed both dirs and added `test-discovery.test.ts` to fail if anyone reverts to enumeration. Latent, not yet firing — all files were listed — but one added test away from a false green. |
+| 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*
 collaborator that reads one — pinning the adapter but not the orchestrator

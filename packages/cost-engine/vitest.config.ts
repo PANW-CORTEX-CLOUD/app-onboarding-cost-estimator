@@ -18,25 +18,19 @@ export default defineConfig({
       {
         test: {
           name: "azure",
-          // TODO(test-discovery): every other project globs a directory, but
-          // `src/providers/__tests__/` files must each be listed here by name.
-          // A new test file added there runs nowhere and reports nothing -
-          // it silently does not exist as far as `pnpm test` is concerned.
-          // Consider globbing "src/providers/__tests__/**/*.test.ts" into one
-          // project (or a dedicated "providers-shared" project) so adding a
-          // cross-provider test can't be a no-op.
-          include: [
-            "src/providers/azure/**/*.test.ts",
-            "src/providers/__tests__/capability-meter-map.test.ts",
-            "src/providers/__tests__/create-estimate-mvp.test.ts",
-            "src/providers/__tests__/tf-audit-reconciliation.test.ts",
-            "src/providers/__tests__/tf-vs-retail-audit.test.ts",
-            "src/providers/__tests__/price-validation.test.ts",
-            "src/providers/__tests__/meter-closure.test.ts",
-            "src/providers/__tests__/capability-drivers.test.ts",
-            "src/providers/__tests__/tiered-pricing-integration.test.ts",
-            "src/providers/__tests__/tf-honesty-warnings.test.ts",
-          ],
+          include: ["src/providers/azure/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          // Cross-provider tests that don't belong to one cloud. This project
+          // GLOBS the directory rather than listing files by name: a shared
+          // test dropped in here that no project matched would run nowhere and
+          // report nothing — passing `pnpm test` while testing zero of its
+          // assertions. test-discovery.test.ts asserts every physical file in
+          // this dir is discovered, so a future config regression fails loudly.
+          name: "providers-shared",
+          include: ["src/providers/__tests__/**/*.test.ts"],
         },
       },
       {
@@ -101,13 +95,11 @@ export default defineConfig({
       },
       {
         test: {
+          // Same rule as providers-shared: glob the directory so a new
+          // top-level test file can't silently no-op. edge-plus-meta.test.ts
+          // guards the discovery.
           name: "monorepo",
-          include: [
-            "src/__tests__/monorepo.test.ts",
-            "src/__tests__/edge-plus-hardening.test.ts",
-            "src/__tests__/edge-plus-meta.test.ts",
-            "src/__tests__/public-surface.test.ts",
-          ],
+          include: ["src/__tests__/**/*.test.ts"],
         },
       },
     ],
