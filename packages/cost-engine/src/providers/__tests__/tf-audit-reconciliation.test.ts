@@ -15,11 +15,31 @@ import {
 } from "../azure/tf-audit-reconciliation.ts";
 import { AZURE_TF_DEFAULTS } from "../azure/capability-meter-map.ts";
 import { createEstimate } from "../create-estimate.ts";
+import { createAzureRatesAdapter } from "../azure/azure-rates-adapter.ts";
+import { createAwsRatesAdapter } from "../aws/aws-rates-adapter.ts";
+import { createGcpRatesAdapter } from "../gcp/gcp-rates-adapter.ts";
+import { createRatesCache } from "../rates/rates-cache.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "../../..");
 const REPO_ROOT = path.resolve(PACKAGE_ROOT, "../..");
 const RECON_DOC = path.join(REPO_ROOT, "docs/TF_COST_RECONCILIATION.md");
+
+/**
+ * Price from the in-repo fallback, never the live feed. Without this seam the
+ * discovery-only estimate below reaches the real Azure Retail Prices API — a
+ * feed it will not even use, since discovery has no meter — and the test turns
+ * into a network test that times out on a slow or contended link (which is
+ * exactly how it failed in the full parallel suite while passing in isolation).
+ */
+const OFFLINE_RATES = {
+  adapters: {
+    azure: createAzureRatesAdapter({ forceFallback: true }),
+    aws: createAwsRatesAdapter({ forceFallback: true }),
+    gcp: createGcpRatesAdapter({ forceFallback: true }),
+  },
+  cache: createRatesCache(),
+};
 
 describe("package 30 — TF reconciliation matrix (REQ/AC)", () => {
   it("reconciliation doc lists discovery $0, three audit meters, exclusions", () => {
@@ -50,6 +70,7 @@ describe("package 30 — TF reconciliation matrix (REQ/AC)", () => {
       region: "eastus",
       capabilities: { discovery: true },
       volume: { accountCount: 10 },
+      ratesOptions: OFFLINE_RATES,
     });
     expect(r.lineItems).toEqual([]);
     expect(r.totals.expected).toBe(0);
