@@ -57,6 +57,7 @@ to find one.
 | [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `done` |
 | [REQ-16](#req-16--error-responses-must-carry-the-media-type-the-contract-declares) | Error responses must carry the media type the contract declares | `done` |
 | [REQ-17](#req-17--an-unexpected-error-must-not-leak-its-raw-message-to-the-client) | An unexpected error must not leak its raw message to the client | `done` |
+| [REQ-18](#req-18--a-persisted-blob-must-not-be-trusted-just-because-it-parses) | A persisted blob must not be trusted just because it parses | `done` |
 
 ---
 
@@ -757,6 +758,34 @@ Found by a read-only sweep of the just-merged global error net.
   the same "generic for upstream, specific for client-actionable" split should
   apply there too.
 
+## REQ-18 — A persisted blob must not be trusted just because it parses  `done`
+
+The earliest architecture sweep flagged this and it stayed open until now: the
+one remaining fail-**open** in an otherwise fail-closed codebase.
+
+### UC-18.1 — A stale localStorage estimate must not render after a contract change
+
+- **T-18.1.1** `done` `loadEstimateCache` validated only that the top-level
+  keys (`estimate`, `provider`, `cachedAt`) *existed*, never the shape of the
+  cached `EstimateResponse`. The storage key is versioned (`:v1`) but bumped by
+  hand, so a contract change that forgot the bump would let a blob written by an
+  older build — with missing or renamed fields — parse and render as if it were
+  a live estimate. `apps/web` has no schema validator (it consumes generated
+  types only, so `as EstimateResponse` proves nothing at runtime), so added a
+  hand-rolled structural guard that checks the load-bearing required fields
+  (`provider`, `lineItems` array, `totals.expected` number, `confidence`,
+  `modelVersion`, `ratesAsOf`, `inputHash`) and treats a drifted or partial blob
+  as **absent** (`null`) so the app re-fetches, rather than fail open into a
+  malformed render.
+  *Tests* (`estimate-cache.test.ts`, new): valid round-trip; provider-mismatch
+  → absent; corrupt/unparseable → null; **edge** a parseable blob missing
+  required fields is rejected (the case the old presence-only check would have
+  returned); **edge** a `totals.expected` of the wrong type is rejected.
+  *Learning*: a versioned storage key only helps if something bumps it; a shape
+  guard on read protects continuously without depending on anyone remembering.
+  Validate persisted data against its current shape at the trust boundary, the
+  same way the API validates an incoming request body.
+
 ---
 
 ## Sweep record
@@ -781,6 +810,7 @@ looked".
 | 2026-08-11 | API tests reaching the live network (REQ-15) | **Found and fixed.** `refreshRates is rate-limited` looped up to 15 live refresh POSTs and timed out under parallel load (passed in isolation). Rewrote it to pre-exhaust the limiter (0 fetches) and moved counting coverage to a unit test. Then closed the root cause: `createApp(deps?: { ratesOptions })` now injects an offline rates seam into every pricing route (T-15.2.1), exercised in `app-offline-seam.test.ts`. |
 | 2026-08-11 | Error responses sent as `application/json`, not `application/problem+json` (REQ-16) | **Found and fixed.** The OpenAPI contract and `problem.ts` promise RFC 7807, but every 400/429 went out as `application/json` because Hono's `c.json()` overwrote the Content-Type `problemJson` set via `c.header()`. Invisible because tests only checked the JSON body's `status`, never the wire media type. Surfaced by the T-15.2.1 edge test. Fixed `problemJson` to `c.body(JSON.stringify(...))`; both the 400 and 429 paths now assert the media type. *Rule*: assert the media type on error responses, not just the body — and know `c.json()` clobbers a prior `c.header("Content-Type")`. |
 | 2026-08-11 | 500 error echoing the raw exception message (CWE-209, REQ-17) | **Found and fixed.** The just-merged global `onError` net put `err.message` verbatim into the 500 body — for the unexpected throw it catches, that is uncontrolled text (upstream provider errors, internal URLs) and contradicts the API's own "never expose raw provider payloads" contract. Fixed to a generic 500 detail + a request id (`instance` + `X-Request-Id`), real cause in the logs. *Rule*: 4xx detail is for the client to act on (echo the domain reason); 5xx detail is not (give a correlation id, log the cause). |
+| 2026-08-11 | Persistence drift — cache trusted by presence, not shape (REQ-18) | **Found and fixed** (the earliest sweep flagged it; it stayed open). `loadEstimateCache` returned any blob with the right *keys*, never checking the `EstimateResponse` *shape*, so a contract change without a manual `:v1` key bump would render a stale, differently-shaped estimate. Added a fail-closed structural guard on read. *Rule*: validate persisted data against its current shape at the trust boundary — a versioned key only helps if someone remembers to bump it. |
 | 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
 | 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
 
