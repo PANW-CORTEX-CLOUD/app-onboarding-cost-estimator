@@ -220,14 +220,13 @@ describe("package 15 — OpenAPI REST", () => {
     // Exhaust the limiter directly on the key the route uses ("global"), so
     // the FIRST HTTP call is already over the limit. The previous version
     // looped up to 15 live POSTs to trip the limiter, and each pre-429
-    // request drove getRates(forceLive:true) at the real network — the route
-    // has no offline seam — so the test flaked with a 60s timeout under
-    // parallel suite load. Pre-exhausting asserts the same 429 HTTP path with
-    // zero network fetches. The limiter's counting/window behaviour is covered
-    // directly in rate-limit.test.ts.
-    // TODO(REQ-15): give createApp a rates seam so the /rates and /estimates
-    // routes can be driven offline in tests instead of relying on the limiter
-    // short-circuit; today only the 429 path can be tested without the network.
+    // request drove getRates(forceLive:true) at the real network, so the test
+    // flaked with a 60s timeout under parallel suite load. Pre-exhausting
+    // asserts the same 429 HTTP path with zero network fetches. The limiter's
+    // counting/window behaviour is covered directly in rate-limit.test.ts, and
+    // the offline seam that removes the underlying network dependency from the
+    // pricing routes now exists (REQ-15 T-15.2.1, exercised in
+    // estimate-offline.test.ts).
     for (let i = 0; i < 10; i++) refreshRatesLimiter.check("global");
     const res = await app.request("/v1/rates/refresh", {
       method: "POST",
@@ -236,6 +235,10 @@ describe("package 15 — OpenAPI REST", () => {
     });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBeTruthy();
+    // The error media type must be the RFC 7807 type the OpenAPI spec declares,
+    // not plain application/json (regression guard for the c.json() Content-Type
+    // overwrite bug fixed in problemJson).
+    expect(res.headers.get("Content-Type")).toMatch(/application\/problem\+json/);
     const problem = await res.json();
     expect(problem.status).toBe(429);
   });

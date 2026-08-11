@@ -5,7 +5,8 @@
  * `/v1/rates/refresh` HTTP test that looped live requests until it tripped —
  * which made the counting behaviour hostage to the network. Testing the
  * limiter directly here lets the HTTP test just confirm the 429 wiring
- * without any fetch (see openapi-rest.test.ts, TODO(REQ-15)).
+ * without any fetch (see openapi-rest.test.ts); the offline rates seam that
+ * removes the network dependency from the pricing routes is REQ-15 T-15.2.1.
  */
 import { describe, expect, it } from "vitest";
 import { createRateLimiter } from "../rate-limit.ts";
