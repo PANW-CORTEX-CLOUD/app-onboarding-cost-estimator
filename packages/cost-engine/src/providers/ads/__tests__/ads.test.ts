@@ -51,7 +51,7 @@ const gcpRates: RateCard = {
   currency: "USD",
   unitPrices: {
     "pd-snapshot-storage": 0.026,
-    "gce-outpost-scanner": 0.0475,
+    "gce-outpost-scanner": 0.067,
   },
   capturedAt: "2026-07-01T00:00:00.000Z",
 };

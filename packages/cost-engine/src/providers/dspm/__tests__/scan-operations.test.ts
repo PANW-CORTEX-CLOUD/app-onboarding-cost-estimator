@@ -137,7 +137,7 @@ describe("T-1.1.2 — the DSPM estimate reproduces the arithmetic end to end", (
       provider: "gcp",
       region: "us-central1",
       currency: "USD",
-      unitPrices: { "gcs-class-b-10k": 0.004, "gcs-class-a-10k": 0.05, "gce-outpost-scanner": 0.0475 },
+      unitPrices: { "gcs-class-b-10k": 0.004, "gcs-class-a-10k": 0.05, "gce-outpost-scanner": 0.067 },
       capturedAt: "2026-08-10T00:00:00.000Z",
     };
     const results = [

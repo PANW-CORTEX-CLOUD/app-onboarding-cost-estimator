@@ -22,6 +22,7 @@ import { createRatesCache } from "../rates/rates-cache.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "../../..");
+
 const REPO_ROOT = path.resolve(PACKAGE_ROOT, "../..");
 const RECON_DOC = path.join(REPO_ROOT, "docs/TF_COST_RECONCILIATION.md");
 
@@ -31,12 +32,15 @@ const RECON_DOC = path.join(REPO_ROOT, "docs/TF_COST_RECONCILIATION.md");
  * feed it will not even use, since discovery has no meter — and the test turns
  * into a network test that times out on a slow or contended link (which is
  * exactly how it failed in the full parallel suite while passing in isolation).
+ * Two sessions added this seam independently; the merged copy keeps the pinned
+ * clock so rate-provenance ages stay deterministic too.
  */
+const NOW = new Date("2026-08-11T00:00:00.000Z");
 const OFFLINE_RATES = {
   adapters: {
-    azure: createAzureRatesAdapter({ forceFallback: true }),
-    aws: createAwsRatesAdapter({ forceFallback: true }),
-    gcp: createGcpRatesAdapter({ forceFallback: true }),
+    azure: createAzureRatesAdapter({ forceFallback: true, now: NOW }),
+    aws: createAwsRatesAdapter({ forceFallback: true, now: NOW }),
+    gcp: createGcpRatesAdapter({ forceFallback: true, now: NOW }),
   },
   cache: createRatesCache(),
 };
@@ -71,6 +75,7 @@ describe("package 30 — TF reconciliation matrix (REQ/AC)", () => {
       capabilities: { discovery: true },
       volume: { accountCount: 10 },
       ratesOptions: OFFLINE_RATES,
+      now: NOW,
     });
     expect(r.lineItems).toEqual([]);
     expect(r.totals.expected).toBe(0);

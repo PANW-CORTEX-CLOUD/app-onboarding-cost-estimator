@@ -4,6 +4,29 @@
 import { describe, expect, it } from "vitest";
 import { createEstimate } from "../create-estimate.ts";
 import { DSPM_BAND_HIGH_FACTOR, DSPM_BAND_LOW_FACTOR } from "../dspm/dspm.types.ts";
+import { createAzureRatesAdapter } from "../azure/azure-rates-adapter.ts";
+import { createAwsRatesAdapter } from "../aws/aws-rates-adapter.ts";
+import { createGcpRatesAdapter } from "../gcp/gcp-rates-adapter.ts";
+import { createRatesCache } from "../rates/rates-cache.ts";
+
+/**
+ * Offline rate seam. These assertions are all structural — discovery is $0,
+ * a Low-confidence mix exposes bands, an audit line carries no SaaS — so they
+ * must not depend on what the live price APIs return today, or on the network
+ * being reachable at all. Without this, every call fell through to a live
+ * `getRates` fetch and the suite flaked under load (a 5s timeout on the
+ * discovery-only case, which does no pricing math whatsoever). Pin the clock
+ * too so rate-provenance ages are deterministic.
+ */
+const NOW = new Date("2026-08-11T00:00:00.000Z");
+const OFFLINE_RATES = {
+  adapters: {
+    azure: createAzureRatesAdapter({ forceFallback: true, now: NOW }),
+    aws: createAwsRatesAdapter({ forceFallback: true, now: NOW }),
+    gcp: createGcpRatesAdapter({ forceFallback: true, now: NOW }),
+  },
+  cache: createRatesCache(),
+};
 
 describe("package 19 — createEstimate MVP bands", () => {
   it("discovery-only yields $0 expected and no line items", async () => {
@@ -12,6 +35,8 @@ describe("package 19 — createEstimate MVP bands", () => {
       region: "eastus",
       capabilities: { discovery: true },
       volume: { accountCount: 10 },
+      ratesOptions: OFFLINE_RATES,
+      now: NOW,
     });
     expect(r.lineItems).toEqual([]);
     expect(r.totals.expected).toBe(0);
@@ -29,6 +54,8 @@ describe("package 19 — createEstimate MVP bands", () => {
         pctScanned: 10,
         scansPerMonth: 1,
       },
+      ratesOptions: OFFLINE_RATES,
+      now: NOW,
     });
     expect(r.confidence).toBe("Low");
     expect(r.totals.low).toBeDefined();
@@ -55,6 +82,8 @@ describe("package 19 — createEstimate MVP bands", () => {
         peakMBps: 1,
         peakEventsPerSec: 1000,
       },
+      ratesOptions: OFFLINE_RATES,
+      now: NOW,
     });
     expect(r.lineItems.length).toBeGreaterThan(0);
     for (const li of r.lineItems) {
@@ -78,6 +107,8 @@ describe("package 19 — createEstimate MVP bands", () => {
         peakMBps: 1,
         peakEventsPerSec: 1000,
       },
+      ratesOptions: OFFLINE_RATES,
+      now: NOW,
     });
     expect(scaled.resolvedVolume.overrideStreamMetrics).toBe(false);
     expect(scaled.resolvedVolume.ingressGBPerDay).toBeCloseTo(100);
@@ -92,6 +123,8 @@ describe("package 19 — createEstimate MVP bands", () => {
         peakMBps: 1,
         peakEventsPerSec: 1000,
       },
+      ratesOptions: OFFLINE_RATES,
+      now: NOW,
     });
     expect(locked.resolvedVolume.ingressGBPerDay).toBe(10);
   });

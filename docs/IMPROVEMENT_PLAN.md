@@ -131,48 +131,71 @@ still produce numbers.
   *Tests*: same-region pull is $0; cross-region uses the egress meter; the
   retired ids are billed by nothing; **e2e** confirms $0 same-region via the API.
 
-### UC-2.2 — GCP ADS snapshots are priced from the source disk type
+### UC-2.2 — GCP ADS snapshots are priced honestly  `done`
 
-- **T-2.2.1** `blocked` Replace the flat `pd-snapshot-storage` constant with a
-  `sourceDiskType` input (pd-standard | pd-balanced | pd-ssd), since GCP prices
-  standard snapshots as the underlying disk.
-  *Tests*: each disk type yields its own rate; **edge** an unknown disk type
-  fails closed rather than defaulting to the cheapest.
+- **T-2.2.1** `done` — **and the plan above was wrong, again.** The task as
+  written was to add a `sourceDiskType` input because "GCP prices standard
+  snapshots as the underlying disk." Research **refuted the premise**, so the
+  `sourceDiskType` input was **not built** — building it would have encoded a
+  false model and dressed it as rigour (the exact T-2.1.1 mistake).
 
-  **Blocked on vendor verification, deliberately.** The premise above —
-  "priced as the underlying disk" — is an *unverified claim carried in this
-  plan*, not something read off a Google page. Implementing a `sourceDiskType`
-  input on top of it would bake an assumption into the pricing model and give
-  it the appearance of rigour, which is precisely the failure this repo exists
-  to prevent. T-2.1.1 is the cautionary precedent: research **overturned** the
-  planned ACR fix, and building to the plan would have shipped a second wrong
-  number.
-  Three things must come off an official page before any code changes: (1)
-  whether the snapshot rate genuinely varies by source disk type or is priced
-  independently of it; (2) whether snapshots bill on **incremental** stored
-  bytes rather than full disk size — this dominates the estimate and no
-  `sourceDiskType` refinement matters if the quantity is wrong; (3) current
-  regional vs multi-regional $/GB-month. If (1) is false, this task should be
-  **closed, not implemented**.
+  Verified 2026-08-11 against
+  [docs.cloud.google.com/compute/docs/disks/snapshots](https://docs.cloud.google.com/compute/docs/disks/snapshots):
+  snapshot storage "charge[s] only for the total size of the snapshot" — a
+  **single flat $/GB-month rate**, the same for every source disk type, on the
+  compressed *incremental* used size. So one flat meter is the correct shape;
+  the plan's per-disk-type refinement was the wrong fix and is dropped.
 
-### UC-2.3 — The GCP scanner VM is a named SKU
+  What shipped instead is a real **bug fix found by the research**: the fallback
+  value `pd-snapshot-storage = 0.026` was the **pre-2023 regional price**. GCP
+  raised us-central1 regional standard-snapshot storage to **0.05/GB-month** on
+  2023-04-01, so the estimator was under-charging snapshots ~2×. Corrected the
+  fallback to 0.05 and the ledger to match.
 
-- **T-2.3.1** `blocked` (was `todo`) Name the machine type behind
-  `gce-outpost-scanner` and record the quote, clearing the last `unverified`
-  ledger row and its `blockedReason`.
-  Blocked for the same reason: the candidate (`e2-standard-2`, as the analogue
-  of Azure D2s v3 / AWS t3.medium) and its on-demand rate must come from
-  official GCP pricing, not from recall. Note when unblocking that D2s v3 is
-  2 vCPU/8 GB while t3.medium is 2 vCPU/4 GB, so "the analogue" is already
-  ambiguous and the choice needs stating, not assuming.
-  *Tests*: ledger gate stops reporting a blocked row.
+  Confidence handling: the row moves from `unsupported-meter` (which was itself
+  wrong — it *is* a real vendor meter) to `unverified`, because the exact value
+  comes from the documented 2023 price change plus corroborating secondary
+  sources, **not** a machine-readable official feed — Google's pricing page is
+  client-rendered and its Cloud Billing Catalog needs an API key. `unverified`
+  keeps every ADS line at Low confidence with a named warning, so 0.05 is never
+  presented as vendor-backed; it is simply the current figure instead of a
+  three-year-stale one.
+  *Tests*: `ads.test.ts`, `formula-regression.test.ts`,
+  `price-validation.test.ts`, `meter-closure.test.ts` all green (52); ledger
+  binding + fallback-age gates pass; the ADS line still carries `trusted:false`
+  / Low confidence / a `pd-snapshot-storage` warning.
+  *Learning*: two of this plan's three "priced as underlying X" GCP premises
+  (this and `gcs-data-read-band`) turned out false on contact with the vendor
+  docs. A plan note that a price "varies by underlying resource type" is a
+  hypothesis to verify, not a spec to implement.
 
-### UC-2.3 — The GCP scanner VM is a named SKU
+### UC-2.3 — The GCP scanner VM is a named SKU  `done`
 
-- **T-2.3.1** `todo` Name the machine type behind `gce-outpost-scanner`
-  (e2-standard-2 is the analogue of Azure D2s v3 and AWS t3.medium) and record
-  the quote. Clears the last `unverified` row and its `blockedReason`.
-  *Tests*: ledger gate stops reporting a blocked row.
+(Two copies of this task existed after a cross-session merge — the numbering
+collision the header warns about. Consolidated here.)
+
+- **T-2.3.1** `done` Named the scanner machine type **e2-standard-2**
+  (2 vCPU / 8 GiB) — the GCP analogue of Azure D2s v3 (2 vCPU / 8 GB); AWS
+  t3.medium is smaller (2 vCPU / 4 GB), so the choice is stated rather than
+  assumed, and it matches the size the other two clouds already price.
+  Corrected the value from $0.0475/hour to the **on-demand** us-central1 list
+  rate **$0.067/hour**: the old number was neither on-demand ($0.067) nor spot
+  ($0.0402) but the sustained-use-discounted rate, which is wrong for an
+  ephemeral VM billed `rate × scansPerMonth × hoursPerScan` — a couple of hours
+  per scan is far below the sustained-use threshold. Recorded `machineType` in
+  the ledger row and named the SKU in a code comment on
+  `GCP_ADS_OUTPOST_METER`.
+  The row stays `unverified` (Low confidence + warning on every ADS Outpost
+  line) because $0.067 is corroborated by two secondary sources
+  (gcloud-compute.com, instances.vantage.sh) but not a machine-readable
+  official feed — GCP's pricing page is client-rendered. The "no machine type"
+  blocker is cleared; only the crawl limitation remains (REQ-4).
+  *Tests*: ledger binding + fallback-age gates pass at 0.067; the three ADS/DSPM
+  fixtures using the old synthetic 0.0475 were updated to 0.067 (their
+  assertions test `computeCost > 0` / `=== 0`, not the literal rate).
+  *Learning*: for an ephemeral resource, the honest rate is **on-demand**, not
+  the sustained-use or committed-use figure a pricing page may headline — the
+  discount encodes a usage commitment the workload does not make.
 
 ## REQ-3 — Volume tiers and free allowances must not be silently ignored  `done`
 
@@ -583,6 +606,7 @@ looked".
 | 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. **Updated 2026-08-11:** the ADS `?? 0`s are now fully guard-protected (REQ-6.2 requires both drivers). One inert case remains and is flagged with a TODO: `avgImageGB ?? 0` in the registry block feeds only the disabled cross-region pull path, so it changes no total. |
 | 2026-08-10 | Unexplained magic numbers | Moved to `estimator-defaults.ts` with provenance per constant (REQ-5). |
 | 2026-08-11 | Tests that pin a fixture date but not the clock | **Found and fixed — third instance of this class.** `rates-module.test.ts` pinned `now` on the *adapters* but not on `getRates`, which stamps `ageDays` with its own clock. The assertion compared a wall-clock `ageDays` against a `NOW`-derived one; they agreed only while the real date shared a day with the fixture's `capturedAt`, then started failing the first run after midnight UTC. Confirmed pre-existing by stashing all in-flight work and reproducing on clean `HEAD`. The sibling `price-freshness.test.ts` already pinned `now` at every call site, so the fix matched an existing pattern rather than inventing one. Swept the remaining `getRates`/`createEstimate` test call sites: no others unpinned. |
+| 2026-08-11 | Unit tests that reach the live network for rates | **Found and fixed.** `create-estimate-mvp.test.ts` (all 5 `createEstimate` calls) and `tf-audit-reconciliation.test.ts` (the discovery-only case) had no offline rate seam, so each fell through to a live `getRates` fetch. The discovery-only assertion — which does no pricing math at all — timed out at 5s under full-suite load, presenting as a failure in unrelated in-flight work. Threaded the established `OFFLINE_RATES` seam (forceFallback adapters + fresh cache + pinned `now`) through both; test time dropped from 5.4s-with-timeout to ~35ms and is now deterministic. Swept every `createEstimate`-calling test: the remaining apparent gaps (`price-validation`, `capability-drivers`) spread a shared already-seamed `inputs`/`base` object, so they were never live. *Rule*: a unit test must never depend on `getRates` reaching the network — inject `ratesOptions` with `forceFallback` adapters, even when the assertion is purely structural, because a $0/no-op path still makes the fetch. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*
 collaborator that reads one — pinning the adapter but not the orchestrator

@@ -30,17 +30,17 @@
     {
       "meterId": "pd-snapshot-storage",
       "unit": "GB-month",
-      "unitPrice": 0.026,
+      "unitPrice": 0.05,
       "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
+      "capturedAt": "2026-08-11T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/compute/disks-image-pricing"
     },
     {
       "meterId": "gce-outpost-scanner",
       "unit": "hour",
-      "unitPrice": 0.0475,
+      "unitPrice": 0.067,
       "currency": "USD",
-      "capturedAt": "2026-08-10T00:00:00.000Z",
+      "capturedAt": "2026-08-11T00:00:00.000Z",
       "sourceUrl": "https://cloud.google.com/compute/vm-instance-pricing"
     },
     {
