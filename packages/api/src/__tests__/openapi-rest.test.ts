@@ -194,6 +194,27 @@ describe("package 15 — OpenAPI REST", () => {
     expect(res.status).toBe(400);
   });
 
+  it("REQ-6.2: ADS with only one multiplicand driver is a 400 naming the missing field", async () => {
+    // avgUsedDiskGB alone would let vmCount `?? 0` zero the snapshot cost — a
+    // silent $0 quote. The engine's sizing guard refuses it; the API surfaces
+    // that refusal as a 400 whose detail names the exact field to supply,
+    // rather than returning a $0 estimate that looks like a real quote.
+    const app = createApp();
+    const res = await app.request("/v1/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "aws",
+        region: "us-east-1",
+        capabilities: { adsCloud: true },
+        volume: { avgUsedDiskGB: 100 },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { detail?: string };
+    expect(body.detail).toMatch(/ads_cloud \(needs: VM count\)/);
+  });
+
   it("refreshRates is rate-limited (429)", async () => {
     const app = createApp();
     const body = JSON.stringify({

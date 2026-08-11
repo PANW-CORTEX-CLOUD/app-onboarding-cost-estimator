@@ -288,6 +288,45 @@ distinction between *absent* and *deliberately zero*.
   drops an undeployed capability before the guard can reject it; **e2e** the
   API returns a 400 naming the missing fields.
 
+### REQ-6.2 — Every multiplicand driver is required, not just one  `done`
+
+*Requirement.* When a capability's cost is a **product** of several sizing
+drivers, supplying only one of them must not silently zero the estimate.
+
+*Use case.* An operator enables **ADS Cloud**, types the average used disk
+(`avgUsedDiskGB = 100`), and forgets the VM count. ADS prices
+`snapshotCost = vmCount × scansPerMonth × prorate(avgUsedDiskGB)`, so the
+missing `vmCount ?? 0` collapses the whole snapshot line to **$0** — a real
+quote-looking zero for a capability the operator explicitly turned on. This was
+possible because T-6.1.1's guard accepted "at least one" driver; both ADS
+drivers are multiplicands with no documented default, so "at least one" is too
+weak. *(Found by probing the guard against reality, not from the spec.)*
+
+*Fix.* `CAPABILITY_SIZING_DRIVERS` now means **all listed drivers are required**
+(explicit `0` still counts as a decision). Fields that carry a documented
+default (`scansPerMonth`, `pctScanned`, `avgObjectSizeMB`, …) were never listed
+as drivers, so no legitimate partial input is newly rejected. `registry` lists
+`imageCount` only: its second field `avgImageGB` feeds the cross-region pull
+path, and `crossRegionPull` is hard-wired `false`, so requiring it would force a
+field that changes no total (TODO at the call site in `create-estimate.ts`).
+
+*Test cases.* unit: ADS with one driver reports the **specific** missing field;
+both present → sized; **edge** an explicit `0` on one driver does not excuse an
+absent other; **edge** registry requires `imageCount`, not `avgImageGB`.
+integration: ADS size-only rejects naming `VM count`; ADS with both prices a
+non-zero snapshot line. **e2e**: `POST /v1/estimates` with `adsCloud` + only
+`avgUsedDiskGB` returns 400 with detail `ads_cloud (needs: VM count)`.
+
+*Layer note.* The rule lives in the engine, not the Zod schema:
+[`z.optional()` cannot distinguish absent from `undefined`](https://github.com/colinhacks/zod/issues/1628),
+and a Zod `.superRefine()` would duplicate the capability→driver map into a
+second source of truth — the exact drift this repo keeps deleting. The engine
+owns the map; the API surfaces its throw as a 400.
+
+*Follow-on found.* The provider-compare request in `EstimatorPage.tsx` omitted
+`vmCount`/`avgUsedDiskGB`, so comparing providers with ADS on errored every
+column. Fixed for parity with the main-run and tier-compare paths.
+
 ## REQ-7 — The engine must be debuggable without a debugger  `doing` (T-7.1.1 done)
 
 There is no logging anywhere in the engine or API. Diagnosing a wrong total
@@ -538,9 +577,10 @@ looked".
 | 2026-08-10 | Duplicated invariants (same rule in a gate script and the engine) | **Found and fixed** — the ledger binding rule existed twice and had already drifted (REQ-9). Now imported. |
 | 2026-08-10 | Silent degradation by data source | **Found and fixed** — tiering vanished on live/cached rates (REQ-10). |
 | 2026-08-10 | Absent coerced to zero | **Found and fixed** (REQ-6). |
+| 2026-08-11 | Absent coerced to zero — multiplicand grain | **Found and fixed** (REQ-6.2). The REQ-6 guard accepted "at least one" driver, but ADS's two drivers are multiplicands: supplying only one let the other `?? 0` produce a silent $0. Guard now requires every listed driver; probed against the real engine to confirm the gap and the fix. |
 | 2026-08-10 | Swallowed errors (`catch {}`) | Checked all 7. All legitimate: each converts a parse failure into an explicit typed error or Problem response. No change. |
 | 2026-08-10 | `as any` / unchecked casts | None in engine, API or web. |
-| 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. |
+| 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. **Updated 2026-08-11:** the ADS `?? 0`s are now fully guard-protected (REQ-6.2 requires both drivers). One inert case remains and is flagged with a TODO: `avgImageGB ?? 0` in the registry block feeds only the disabled cross-region pull path, so it changes no total. |
 | 2026-08-10 | Unexplained magic numbers | Moved to `estimator-defaults.ts` with provenance per constant (REQ-5). |
 | 2026-08-11 | Tests that pin a fixture date but not the clock | **Found and fixed — third instance of this class.** `rates-module.test.ts` pinned `now` on the *adapters* but not on `getRates`, which stamps `ageDays` with its own clock. The assertion compared a wall-clock `ageDays` against a `NOW`-derived one; they agreed only while the real date shared a day with the fixture's `capturedAt`, then started failing the first run after midnight UTC. Confirmed pre-existing by stashing all in-flight work and reproducing on clean `HEAD`. The sibling `price-freshness.test.ts` already pinned `now` at every call site, so the fix matched an existing pattern rather than inventing one. Swept the remaining `getRates`/`createEstimate` test call sites: no others unpinned. |
 
@@ -563,6 +603,7 @@ commitments. Each notes what would have to be true to make it worth doing.
 | Confidence-weighted totals | A total that mixes a verified Event Hubs line with an invented ACR line reads as one number. Weighting, or splitting the total into *vendor-backed* and *modelled*, keeps the honesty visible in the headline. | Modelled capabilities stay in the product. |
 | Per-line "show the arithmetic" | The notes now carry object and operation counts; rendering them under each line removes the last reason to read the source. | REQ-1 ships. |
 | Ledger freshness badge in the UI | The engine knows each rate's age; the UI still shows one global banner. | Cheap once verification reaches the response, which it now does. |
+| Client-side sizing pre-flight | The engine now rejects an enabled capability that is missing a required driver (REQ-6.2), surfaced as a 400. The web form could run the same `findUnsizedCapabilities` rule *before* Run and highlight the empty field inline, so the operator never sees a server error for something the form already knows. The rule lives in the engine; exposing it to the UI keeps one source of truth. | The capability→driver map is worth exposing to `apps/web` (today the web layer never imports the engine directly — this would be the first case, or the map gets mirrored into a shared contract). |
 
 ## Mid term (months) — close the loop with reality
 
@@ -618,3 +659,5 @@ unilateral delete.
 | `loadLastShareState` (+ `readLocalJson`) | `shared/lib/safe-storage.ts` | The read-back half of a write/read pair: `saveLastShareState` **is** called (`EstimatorPage.tsx` `onCopyShareLink`, as a local backup whenever a share link is copied), but nothing ever calls `loadLastShareState` to restore it — e.g. as a fallback when the `?s=` URL param is missing or truncated. Looks like a safety-net feature that shipped half-wired: write path done, read/restore path never connected. | **FINISH** (call it during bootstrap when no `?s=` param is present) **or DELETE** (drop the read half and `readLocalJson` if the recovery UX isn't wanted) — a small, cheap decision either way. |
 | `AWS_TF_PRESENT` / `GCP_TF_PRESENT` | `providers/{aws,gcp}/capability-meter-map.ts` | Both hardcoded `false`, re-exported publicly, referenced only by their own declaration, the package re-export, and a test that asserts `toBe(false)`. No conditional anywhere reads either flag — `tf-honesty-warnings.ts` reimplements the same "AWS/GCP have no TF inventory" fact via a hardcoded provider-name check instead of consulting these flags. Inert today because both providers' Terraform readiness genuinely is "not yet" (see `docs/CLOUD_COST_MODEL.md`'s provider-readiness table — this is intentional placeholder state, not a mistake), but the flags currently do nothing. | **UNCLEAR** — either wire `tf-honesty-warnings.ts` to branch on the flag (so it becomes meaningful the day AWS/GCP Terraform lands) or remove the flags and keep the hardcoded check. Lower priority than the other three rows. |
 | `capabilityForAffectsField` | `shared/model/tf-grounding.ts` | Zero references anywhere, including within its own file. `shared/lib/affects-chips.ts` (a later addition per its own package-number comment) independently reimplements the same "which volume field maps to which capability/meters" concept with its own field list. The constant it reads (`AUDIT_AFFECTS_FIELD_IDS`) is still used elsewhere — only the function itself is dead. | **DELETE.** High confidence — superseded by `affects-chips.ts`, zero references, the one thing it reads is used elsewhere so nothing else breaks. |
+| `CAPABILITY_LABELS` | `widgets/CapabilityToggles/CapabilityToggles.tsx` | Already carries an `@deprecated` tag ("Prefer `capabilityLabel()` — kept for callers expecting short names"), but an export-usage cross-reference across all three packages + `apps/web` finds **zero callers** — the migration it was left as a bridge for is complete. It only calls `capabilityLabel()` per key, so deleting it removes a table nothing reads. | **DELETE.** High confidence — self-declared deprecated, zero references. Found in the 2026-08-11 back-compat sweep. |
+| `DeprecatedForce` query param | `openapi/openapi.yaml` (`/rates/refresh`) → generated `openapi.types.ts` | A `deprecated: true` query parameter documented as a "Deprecated no-op; use body.forceLive". The route reads `forceLive` from the JSON body; the query param does nothing, and no client (`apps/web` or tests) ever sends it. A pure backward-compat husk in the API contract with no senders to break. | **DELETE** from `openapi.yaml` and regenerate types — or keep only if an external (non-`apps/web`) client is known to still pass it, which nothing in-repo does. Found in the 2026-08-11 back-compat sweep. |

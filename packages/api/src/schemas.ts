@@ -24,10 +24,17 @@ export const CreateEstimateRequestSchema = z
       .strict(),
     volume: z
       .object({
-        // TODO(REQ-6, docs/IMPROVEMENT_PLAN.md): these are `?? 0`'d together
-        // with genuinely-absent fields downstream, collapsing "not provided"
-        // and "explicitly zero" into one warning path. nonnegative() here
-        // only closes the negative-input gap; it doesn't address that.
+        // `nonnegative()` owns the bounds check here (no negative volumes). The
+        // absent-vs-zero distinction is deliberately NOT enforced at this layer:
+        // Zod's `.optional()` cannot distinguish a missing key from an explicit
+        // `undefined` (colinhacks/zod#1628), and the rule that actually matters —
+        // "if capability X is enabled, its sizing drivers must be present" — is a
+        // cross-field dependency keyed on the capability→driver map. Encoding it
+        // in a `.superRefine()` would duplicate that map into a second source of
+        // truth and invite exactly the drift this repo keeps removing. The engine
+        // owns the map and enforces the rule once, for every caller, in
+        // cost-engine/providers/capability-drivers.ts (REQ-6/REQ-6.2); the API
+        // surfaces its throw as a 400.
         accountCount: z.number().nonnegative().optional(),
         monthlyActiveUsers: z.number().nonnegative().optional(),
         logIntensity: z.enum(["low", "medium", "high"]).optional(),

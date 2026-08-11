@@ -42,14 +42,37 @@ describe("absent vs deliberately zero", () => {
     ).toStrictEqual([]);
   });
 
-  it("one of several drivers is enough — partial input is allowed", () => {
-    // Requiring every driver would reject reasonable input where documented
-    // defaults cover the rest.
+  it("REQ-6.2: every multiplicand driver is required — a partial ADS input is a gap", () => {
+    // ADS prices vmCount × scansPerMonth × prorate(avgUsedDiskGB): both are
+    // multiplicands with no default, so supplying only one let the other `?? 0`
+    // zero the whole snapshot cost — a silent $0 for an enabled capability.
     expect(
       findUnsizedCapabilities(["ads_cloud"], { vmCount: 12 }),
+    ).toStrictEqual([{ capability: "ads_cloud", drivers: ["avgUsedDiskGB"] }]);
+    expect(
+      findUnsizedCapabilities(["ads_cloud"], { avgUsedDiskGB: 100 }),
+    ).toStrictEqual([{ capability: "ads_cloud", drivers: ["vmCount"] }]);
+    // Both supplied (explicit 0 counts) → fully sized.
+    expect(
+      findUnsizedCapabilities(["ads_cloud"], { vmCount: 12, avgUsedDiskGB: 40 }),
     ).toStrictEqual([]);
+  });
+
+  it("EDGE: REQ-6.2: an explicit zero on one driver does not excuse an absent other", () => {
+    expect(
+      findUnsizedCapabilities(["ads_cloud"], { vmCount: 0 }),
+    ).toStrictEqual([{ capability: "ads_cloud", drivers: ["avgUsedDiskGB"] }]);
+  });
+
+  it("REQ-6.2: registry's only required driver is imageCount — avgImageGB is inert", () => {
+    // avgImageGB feeds the cross-region pull path, which is disabled
+    // (crossRegionPull hard-wired false), so it changes no total and must not be
+    // required. imageCount is the real driver.
     expect(
       findUnsizedCapabilities(["registry"], { avgImageGB: 0.4 }),
+    ).toStrictEqual([{ capability: "registry", drivers: ["imageCount"] }]);
+    expect(
+      findUnsizedCapabilities(["registry"], { imageCount: 5 }),
     ).toStrictEqual([]);
   });
 
@@ -75,7 +98,7 @@ describe("absent vs deliberately zero", () => {
 
   it("the error names the capability and the fields that would fix it", () => {
     expect(() => assertCapabilitiesAreSized(["dspm"], {})).toThrow(
-      /dspm \(needs one of: data estate GB\)/,
+      /dspm \(needs: data estate GB\)/,
     );
     expect(() => assertCapabilitiesAreSized(["ads_cloud"], {})).toThrow(
       /VM count, average used disk GB/,
@@ -83,6 +106,16 @@ describe("absent vs deliberately zero", () => {
     expect(() => assertCapabilitiesAreSized(["dspm"], {})).toThrow(
       /Refusing to report \$0/,
     );
+  });
+
+  it("EDGE: REQ-6.2: the error names only the still-missing field, not the whole set", () => {
+    // vmCount was supplied; the message should ask for avgUsedDiskGB alone.
+    expect(() =>
+      assertCapabilitiesAreSized(["ads_cloud"], { vmCount: 12 }),
+    ).toThrow(/ads_cloud \(needs: average used disk GB\)/);
+    expect(() =>
+      assertCapabilitiesAreSized(["ads_cloud"], { vmCount: 12 }),
+    ).not.toThrow(/VM count/);
   });
 
   it("says nothing when everything is sized", () => {
@@ -110,7 +143,35 @@ describe("the guard reaches real estimates", () => {
         capabilities: { auditLogs: true, dspm: true },
         volume: { accountCount: 10 },
       }),
-    ).rejects.toThrow(/capability enabled without any sizing input.*dspm/s);
+    ).rejects.toThrow(/capability enabled without required sizing input.*dspm/s);
+  });
+
+  it("REQ-6.2: ADS with only avgUsedDiskGB is refused, not quoted at $0", async () => {
+    // The real bug this closes: a user gives a disk size, omits the VM count,
+    // and the old guard let it through to a silent $0 snapshot line.
+    await expect(
+      createEstimate({
+        provider: "aws",
+        region: "us-east-1",
+        now: NOW,
+        ratesOptions: OFFLINE_RATES,
+        capabilities: { adsCloud: true },
+        volume: { avgUsedDiskGB: 100 },
+      }),
+    ).rejects.toThrow(/ads_cloud \(needs: VM count\)/);
+  });
+
+  it("REQ-6.2: ADS with both drivers prices a non-zero snapshot line", async () => {
+    const res = await createEstimate({
+      provider: "aws",
+      region: "us-east-1",
+      now: NOW,
+      ratesOptions: OFFLINE_RATES,
+      capabilities: { adsCloud: true },
+      volume: { vmCount: 10, avgUsedDiskGB: 100 },
+    });
+    expect(res.totals.expected).toBeGreaterThan(0);
+    expect(res.lineItems.some((l) => l.capability === "ads_cloud")).toBe(true);
   });
 
   it("EDGE: an explicit zero estate is priced and warned, not refused", async () => {

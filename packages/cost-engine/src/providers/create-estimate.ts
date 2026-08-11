@@ -341,9 +341,11 @@ export async function createEstimate(
     warnings.push(...storage.warnings);
   }
 
-  // `?? 0` below is safe now: assertCapabilitiesAreSized has already rejected
-  // the case where nothing was supplied, so reaching here means the caller
-  // either gave a number or deliberately chose zero.
+  // `?? 0` below is safe now: assertCapabilitiesAreSized requires *every* listed
+  // driver for an enabled capability (an explicit 0 counts), so for ADS both
+  // vmCount and avgUsedDiskGB are guaranteed present or deliberately zero by the
+  // time we get here. The coalesce is a defensive no-op, not a silent default —
+  // it can no longer turn "absent" into a $0 quote (see capability-drivers.ts).
   if (caps.adsCloud || caps.adsOutpost) {
     const ads = estimateAds(
       provider,
@@ -401,6 +403,15 @@ export async function createEstimate(
   }
 
   if (caps.registry) {
+    // TODO(REQ-2.x, registry cross-region): crossRegionPull is hard-wired false,
+    // so registry always prices at $0 (same-region pulls are free) and avgImageGB
+    // never affects any total — it only feeds the cross-region pull path. Either
+    // thread crossRegionPull + a region-pair through the request so avgImageGB
+    // becomes live, or drop avgImageGB from the request schema as an inert input.
+    // Until then avgImageGB is intentionally NOT a required sizing driver (see
+    // capability-drivers.ts) because requiring a field that changes nothing would
+    // be user-hostile. `imageCount ?? 0` is guard-protected (imageCount is a
+    // required driver); `avgImageGB ?? 0` is inert by the model above.
     const reg = estimateRegistryScan(
       provider,
       {
