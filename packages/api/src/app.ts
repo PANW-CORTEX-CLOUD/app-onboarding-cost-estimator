@@ -25,6 +25,7 @@ import {
   azureCapabilityMeterMap,
   awsCapabilityMeterMap,
   gcpCapabilityMeterMap,
+  type GetRatesOptions,
 } from "@cloud-connector/cost-engine";
 import { problem, type ProblemDetails } from "./problem.ts";
 import { refreshRatesLimiter } from "./rate-limit.ts";
@@ -57,9 +58,25 @@ function loadOpenApiYaml(): string {
   throw new Error("openapi/openapi.yaml not found (fail closed)");
 }
 
-function problemJson(c: Context, body: ProblemDetails, status: 400 | 429) {
-  c.header("Content-Type", "application/problem+json");
-  return c.json(body, status);
+/**
+ * Emit an RFC 7807 problem document with the correct media type.
+ *
+ * NOTE: this must use `c.body(...)`, not `c.json(...)`. `c.json()` hard-sets
+ * `Content-Type: application/json` on the response and overrides any header set
+ * beforehand, so the previous `c.header("Content-Type", "application/problem+json")`
+ * followed by `c.json()` silently shipped every error as plain `application/json`
+ * — the RFC 7807 media type never reached the wire. Serialising the body
+ * ourselves and passing the content-type to `c.body()` is the only way to keep
+ * it. (Found when the REQ-15 onError test first asserted the media type.)
+ */
+function problemJson(
+  c: Context,
+  body: ProblemDetails,
+  status: 400 | 429 | 500 | 502,
+) {
+  return c.body(JSON.stringify(body), status, {
+    "Content-Type": "application/problem+json",
+  });
 }
 
 function sanitizeRatesResponse(
@@ -104,8 +121,30 @@ function meterMapFor(provider: "azure" | "aws" | "gcp") {
   }));
 }
 
-export function createApp(): Hono {
+/**
+ * Options for {@link createApp}.
+ */
+export type CreateAppOptions = {
+  /**
+   * Rate-resolution seam for tests and offline runs.
+   *
+   * This is the **same** `GetRatesOptions` (adapters / cache / forceLive / now)
+   * that the engine's `getRates` and `createEstimate` already accept. When
+   * provided, every pricing route — `/v1/rates`, `/v1/rates/refresh`,
+   * `/v1/estimates`, `/v1/estimates/freeze` — resolves rates through these
+   * instead of the live feed, so an HTTP-level test can reach the pricing path
+   * without touching the network. Omit in production and the live
+   * live → 24h cache → fallback chain is used exactly as before.
+   *
+   * It is injected server-side and is deliberately **not** part of any request
+   * schema, so a client cannot smuggle adapters in through the wire.
+   */
+  ratesOptions?: GetRatesOptions;
+};
+
+export function createApp(options: CreateAppOptions = {}): Hono {
   const app = new Hono();
+  const { ratesOptions } = options;
 
   // Request access log (method/path/status/latency) - the only observability
   // this API had was a one-time startup banner and a fatal-error console.error;
@@ -120,6 +159,33 @@ export function createApp(): Hono {
   // is safe to leave installed in tests and in production. Runs in every
   // environment precisely so a failing test can be re-run with DEBUG on.
   app.use("*", requestLogger());
+
+  // Global error net. Hono's recommended pattern is one centralized `onError`
+  // rather than a try/catch in every handler (https://hono.dev/docs/api/hono).
+  // The routes below still return their own problem+json for *expected*,
+  // client-actionable failures (validation, fail-closed refusals) — route-level
+  // handling wins. This net exists for the *unexpected* throw: notably the
+  // `/v1/rates` and `/v1/rates/refresh` routes call `getRates` without a local
+  // try/catch, so a rate-adapter failure used to bubble out as Hono's default
+  // bare 500 with no problem+json body. Now it surfaces as a typed 500 the
+  // caller can parse — and, critically, as a response rather than a hung
+  // request.
+  //
+  // TODO(REQ-15, error-taxonomy): a rate-feed outage is really an upstream
+  // dependency failure (502/503), and `/v1/estimates`'s own catch currently
+  // maps an adapter throw to 400 alongside genuine validation refusals. Giving
+  // the engine typed error classes (UpstreamRateError vs ValidationError) would
+  // let both this net and that catch pick the honest status instead of a
+  // catch-all. Out of scope for the injection seam itself.
+  app.onError((err, c) => {
+    const detail = err instanceof Error ? err.message : "unknown error";
+    logRejection(c, `unhandled: ${detail}`);
+    return problemJson(
+      c,
+      problem(500, "Internal error", detail),
+      500,
+    );
+  });
 
   app.get("/v1/health", (c) =>
     c.json({
@@ -166,7 +232,9 @@ export function createApp(): Hono {
         400,
       );
     }
-    const result = await getRates(providerParsed.data, region);
+    const result = await getRates(providerParsed.data, region, {
+      ...ratesOptions,
+    });
     return c.json(sanitizeRatesResponse(providerParsed.data, region, result));
   });
 
@@ -203,6 +271,9 @@ export function createApp(): Hono {
       );
     }
     const result = await getRates(parsed.data.provider, parsed.data.region, {
+      ...ratesOptions,
+      // The request's forceLive wins over any injected default: this route's
+      // whole purpose is to force a refresh.
       forceLive: parsed.data.forceLive !== false,
     });
     return c.json(
@@ -231,7 +302,10 @@ export function createApp(): Hono {
       );
     }
     try {
-      const estimate = await createEstimate(parsed.data);
+      const estimate = await createEstimate({
+        ...parsed.data,
+        ...(ratesOptions ? { ratesOptions } : {}),
+      });
       logEstimateOutcome(c, estimate);
       return c.json({
         provider: estimate.provider,
@@ -283,7 +357,10 @@ export function createApp(): Hono {
     }
     const { ackCriticalStale, ...estimateRequest } = parsed.data;
     try {
-      const estimate = await createEstimate(estimateRequest);
+      const estimate = await createEstimate({
+        ...estimateRequest,
+        ...(ratesOptions ? { ratesOptions } : {}),
+      });
       // freezeEstimate throws when rates are critically stale without an ack -
       // that is the fail-closed export gate, so it must surface as a 400 the
       // caller can act on, not be swallowed into an unpinned success.

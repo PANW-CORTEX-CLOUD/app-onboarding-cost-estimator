@@ -54,7 +54,7 @@ to find one.
 | [REQ-12](#req-12--a-rate-s-source-must-not-change-the-answer) | A rate's source must not change the answer | `done` |
 | [REQ-13](#req-13--the-api-must-be-debuggable-without-adding-console-log) | The API must be debuggable without adding console.log | `doing` |
 | [REQ-14](#req-14--a-test-must-not-be-able-to-silently-not-run) | A test must not be able to silently not-run | `done` |
-| [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `doing` |
+| [REQ-15](#req-15--the-api-must-be-testable-without-the-network) | The API must be testable without the network | `done` |
 
 ---
 
@@ -617,7 +617,7 @@ trap; all files happened to be listed, so it was latent, not yet firing.
   to happen. Glob the directory, and add a test that fails if anyone reverts to
   enumeration — the guarantee has to live in a test, not a comment.
 
-## REQ-15 — The API must be testable without the network  `doing`
+## REQ-15 — The API must be testable without the network  `done`
 
 Every `packages/api` route that prices anything calls `getRates` with the
 default (live) adapters. `createApp()` exposes no seam to inject offline
@@ -640,17 +640,38 @@ made one test flaky.
   `openapi-rest.test.ts` — one HTTP call returns 429 + `Retry-After` + a
   problem+json body. Both network-free.
 
-### UC-15.2 — Any route that prices should be drivable offline  `todo`
+### UC-15.2 — Any route that prices should be drivable offline  `done`
 
-- **T-15.2.1** `todo` Give `createApp()` (or the routes) an injectable rates
-  seam — the same `ratesOptions`/adapters `createEstimate` already accepts —
-  so `/v1/rates`, `/v1/rates/refresh` and `/v1/estimates` can be tested against
-  fallback rates instead of the live feed. Marked in code as `TODO(REQ-15)` at
-  the rate-limit test. Until then only the 429 short-circuit is testable
-  offline.
-  *Tests*: an estimate POST returns a deterministic total from injected
-  fallback adapters with no network; **edge** an injected adapter that throws
-  surfaces as a 5xx/problem+json, not a hang.
+- **T-15.2.1** `done` `createApp(options)` now takes an optional `ratesOptions`
+  (the engine's own `GetRatesOptions` — adapters / cache / forceLive / now),
+  threaded into `/v1/rates`, `/v1/rates/refresh`, `/v1/estimates` and
+  `/v1/estimates/freeze`. Injected server-side and absent from every request
+  schema, so a client cannot smuggle adapters through the wire. The `TODO(REQ-15)`
+  marker is gone.
+  *Tests* (`app-offline-seam.test.ts`): a `/v1/rates` GET and an estimate POST
+  price from the injected fallback with no network and match the engine bit for
+  bit; **edge** two concurrent estimate POSTs are byte-identical (no clock/network
+  drift); a freeze pins the offline card; **edge** an adapter that throws surfaces
+  as a **500 problem+json** through a new global `app.onError` net, not a hang or
+  a bare 500.
+- **Design note (research-led).** Hono's guidance is one centralized
+  [`app.onError`](https://hono.dev/docs/api/hono) over a try/catch in every
+  handler, and route-level handling still wins where present — so the existing
+  per-route `problemJson(400)` fail-closed responses are untouched; the net only
+  catches the *unexpected* throw that `/v1/rates` used to leak as a bare 500.
+- **Bug found and fixed on the way.** Adding the first assertion on the error
+  media type exposed that `problemJson` set `Content-Type: application/problem+json`
+  and then called `c.json()`, which hard-sets `application/json` and overrode it —
+  so **every** error response (400/429) had silently shipped the wrong RFC 7807
+  media type. Switched to `c.body(JSON.stringify(body), status, { … })`; added a
+  content-type regression lock on the 400, 429 and 500 paths. Lesson in a code
+  comment at `problemJson`: `c.json()` owns the content-type, so a custom media
+  type must go through `c.body()`.
+- **Follow-on TODO (in code).** `TODO(REQ-15, error-taxonomy)` at `onError`: a
+  rate-feed outage is really an upstream failure (502/503), and `/v1/estimates`'s
+  own catch maps an adapter throw to 400 alongside genuine validation refusals.
+  Typed engine error classes (UpstreamRateError vs ValidationError) would let both
+  sites pick the honest status. Out of scope for the seam itself.
 
 ---
 
@@ -675,6 +696,7 @@ looked".
 | 2026-08-11 | Config that enumerates test files by name (silent no-op) | **Found and fixed (REQ-14).** `vitest.config.ts` hand-listed the two shared test dirs file-by-file; a new file in either would run nowhere. A `TODO(test-discovery)` had flagged it. Globbed both dirs and added `test-discovery.test.ts` to fail if anyone reverts to enumeration. Latent, not yet firing — all files were listed — but one added test away from a false green. |
 | 2026-08-11 | API tests reaching the live network (REQ-15) | **Found and fixed the acute case.** `refreshRates is rate-limited` looped up to 15 live refresh POSTs and timed out under parallel load (passed in isolation). Rewrote it to pre-exhaust the limiter (0 fetches) and moved counting coverage to a unit test. The underlying gap — `createApp` has no rates seam, so pricing routes can only be tested live — is tracked as REQ-15 T-15.2.1 with a `TODO(REQ-15)` marker. |
 | 2026-08-11 | GCP fallback prices carrying stale/discounted rates | **Found and fixed.** Two GCP meters were wrong: `pd-snapshot-storage` held the pre-2023 price ($0.026 vs current $0.05, ~2x under), and `gce-outpost-scanner` held a sustained-use-discounted rate ($0.0475) instead of the on-demand rate ($0.067) an ephemeral VM should pay. Both surfaced by verifying against vendor docs (REQ-2). *Rule*: a fallback price is a claim with an expiry — a `capturedAt` far in the past on a `verified`/`unverified` row is a re-check due, and "priced as underlying X" / a discounted headline rate are both smells worth a vendor read. |
+| 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*
 collaborator that reads one — pinning the adapter but not the orchestrator

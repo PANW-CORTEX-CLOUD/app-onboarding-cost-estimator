@@ -161,6 +161,7 @@ describe("package 15 — OpenAPI REST", () => {
       }),
     });
     expect(res.status).toBe(400);
+    expect(res.headers.get("Content-Type")).toMatch(/application\/problem\+json/);
     const body = await res.json();
     expect(body.status).toBe(400);
     expect(body.title).toBeTruthy();
@@ -225,9 +226,10 @@ describe("package 15 — OpenAPI REST", () => {
     // parallel suite load. Pre-exhausting asserts the same 429 HTTP path with
     // zero network fetches. The limiter's counting/window behaviour is covered
     // directly in rate-limit.test.ts.
-    // TODO(REQ-15): give createApp a rates seam so the /rates and /estimates
-    // routes can be driven offline in tests instead of relying on the limiter
-    // short-circuit; today only the 429 path can be tested without the network.
+    // The pricing routes now also accept an injected offline rates seam
+    // (createApp({ ratesOptions }), REQ-15 T-15.2.1, exercised in
+    // app-offline-seam.test.ts), so this is no longer the only network-free
+    // HTTP assertion.
     for (let i = 0; i < 10; i++) refreshRatesLimiter.check("global");
     const res = await app.request("/v1/rates/refresh", {
       method: "POST",
@@ -236,6 +238,9 @@ describe("package 15 — OpenAPI REST", () => {
     });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBeTruthy();
+    // RFC 7807 media type — regression lock: c.json() would silently downgrade
+    // this to application/json (see problemJson in app.ts).
+    expect(res.headers.get("Content-Type")).toMatch(/application\/problem\+json/);
     const problem = await res.json();
     expect(problem.status).toBe(429);
   });
