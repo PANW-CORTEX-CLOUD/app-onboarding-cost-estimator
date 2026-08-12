@@ -73,6 +73,7 @@ What is verified, what is still a placeholder, and what to fix next:
 
 ## Tooling (not part of the app)
 
-[`tools/claude-continuous-improvement`](./tools/claude-continuous-improvement/README.md) — a
-Claude Code skill + `Stop` hook that runs the implementation/improvement loop. It installs
-into `~/.claude` and is not wired into this project's build or tests.
+[`tools/claude-skills`](./tools/claude-skills/README.md) — Claude Code skills (currently the
+continuous-improvement loop: a `Stop` hook that keeps an implementation loop going until the
+work is done). They install into `~/.claude` and are not wired into this project's build or
+tests.

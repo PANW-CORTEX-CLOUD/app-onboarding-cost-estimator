@@ -298,10 +298,35 @@ export function decide({ state, control, config = DEFAULT_CONFIG, now = new Date
     return { state: next, verdict };
   };
 
-  const placementNote =
-    control?.placement === "scattered"
-      ? "Control block was not near the end of the message; the last NEXT-STEP line was used."
-      : null;
+  // A NEXT-STEP line with a wall of prose after it is almost never a control block — it is a
+  // message *discussing* the protocol (a summary table, documentation, this file). Honouring
+  // it would let a status report end the loop, and the trigger words are listed in an order
+  // that makes BLOCKED the usual last mention. Treated as no marker at all, which re-prompts
+  // instead of acting on a sentence the model never meant as a control line.
+  if (control?.placement === "scattered") {
+    next.missingMarkerStreak += 1;
+    if (next.missingMarkerStreak > config.maxMissingMarker) {
+      return finish(
+        verdictOf({
+          decision: "allow",
+          reasonCode: "missing-marker-cap",
+          deactivate: false,
+          note: `No usable LOOP CONTROL block for ${next.missingMarkerStreak} turns; letting the session stop. The loop is still armed.`,
+        })
+      );
+    }
+    return finish(
+      verdictOf({
+        decision: "block",
+        reasonCode: "misplaced-marker",
+        mode: next.mode,
+        note: "A NEXT-STEP line was found, but too much text followed it to be the control block.",
+      })
+    );
+  }
+
+  /** @type {string | null} Reserved for placement feedback that does not reject the block. */
+  const placementNote = null;
 
   // Terminal triggers are honoured before any bound: the agent asking to stop always wins.
   if (control?.trigger === "COMPLETE") {
@@ -424,6 +449,17 @@ export function buildFollowUp({ verdict, state, config, promptText }) {
       "",
       "Do not redo the work. Report on what you just did, then end the message with the control block —",
       "the `NEXT-STEP:` line must be the final non-empty line. Re-read PART 2 below for the exact format.",
+      `This is re-prompt ${state.missingMarkerStreak} of ${config.maxMissingMarker}; after that the loop lets the session stop.`,
+      ""
+    );
+  } else if (verdict.reasonCode === "misplaced-marker") {
+    body.push(
+      "Your last turn contained a `NEXT-STEP:` line, but too much text followed it for the loop",
+      "to treat it as the control block — a line buried in prose is usually the message *describing*",
+      "the protocol, not driving it.",
+      "",
+      "Do not redo the work. Restate the outcome briefly and end the message with the control block,",
+      "with the `NEXT-STEP:` line as the **final non-empty line** and nothing after it.",
       `This is re-prompt ${state.missingMarkerStreak} of ${config.maxMissingMarker}; after that the loop lets the session stop.`,
       ""
     );

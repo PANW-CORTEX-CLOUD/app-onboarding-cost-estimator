@@ -217,6 +217,30 @@ describe("stop hook — inputs and robustness", () => {
     assert.equal(readState(), null, "a stand-down must not advance the loop");
   });
 
+  it("emits the whole blocking payload without truncation", () => {
+    // The reason carries the entire loop prompt (~9 KB). stdout to a pipe can flush
+    // asynchronously, so an exit that does not wait would cut the JSON in half and Claude
+    // Code would see a malformed hook result rather than a decision.
+    const out = runHook({ last_assistant_message: finalMessage("CONTINUE — big payload") });
+    assert.equal(out.decision, "block");
+    assert.ok(out.reason.length > 8000, `reason was only ${out.reason.length} bytes`);
+    assert.match(
+      out.reason.trimEnd(),
+      /is a valid, useful outcome\.$/,
+      "the reason must end with the prompt's own last line, not mid-stream"
+    );
+  });
+
+  it("re-prompts twice in a row when the turn yields no message at all", () => {
+    // Two message-less turns hash identically, so a naive per-turn claim would treat the
+    // second as a duplicate and let the session stop instead of re-prompting.
+    const first = runHook({});
+    assert.equal(first.decision, "block");
+    const second = runHook({});
+    assert.equal(second.decision, "block", "the second empty turn must still be re-prompted");
+    assert.equal(readState().missingMarkerStreak, 2);
+  });
+
   it("counts a turn once even when the hook is registered twice", () => {
     const payload = { last_assistant_message: finalMessage("CONTINUE — only once") };
     assert.equal(runHook(payload).decision, "block");
@@ -243,6 +267,23 @@ describe("stop hook — inputs and robustness", () => {
     });
     assert.equal(result.status, 0);
     assert.equal(JSON.parse(result.stdout).decision, "block", "no message = missing marker");
+  });
+
+  it("trims the journal instead of letting it grow forever", () => {
+    const journalFile = path.join(projectDir, ".claude", "continuous-improvement", "journal.jsonl");
+    fs.mkdirSync(path.dirname(journalFile), { recursive: true });
+    // One line per Stop event, forever, in a directory nobody cleans: write past the 1 MB
+    // rotation threshold and confirm the next decision trims it.
+    const filler = `${JSON.stringify({ event: "old", pad: "x".repeat(400) })}\n`;
+    fs.writeFileSync(journalFile, filler.repeat(3000), "utf8");
+    assert.ok(fs.statSync(journalFile).size > 1024 * 1024);
+
+    runHook({ last_assistant_message: finalMessage("CONTINUE — after a long run") });
+
+    const lines = fs.readFileSync(journalFile, "utf8").trim().split("\n");
+    assert.ok(lines.length <= 501, `journal kept ${lines.length} lines`);
+    assert.ok(fs.statSync(journalFile).size < 1024 * 1024);
+    assert.equal(JSON.parse(lines.at(-1)).event, "decision", "the newest entry survives");
   });
 
   it("writes an auditable journal entry per decision", () => {
@@ -322,81 +363,38 @@ describe("loop-ctl CLI", () => {
     assert.match(ctl(["journal", "-n", "1"]).stdout, /"reasonCode":"continue"/);
   });
 
+  it("doctor passes when everything is in place, and warns when unarmed", () => {
+    const out = ctl(["doctor"]);
+    assert.equal(out.status, 0, out.stdout);
+    assert.match(out.stdout, /\[warn\] armed for this project/);
+    assert.match(out.stdout, /arm it with/);
+
+    ctl(["enable"]);
+    const armedOut = ctl(["doctor"]);
+    assert.equal(armedOut.status, 0);
+    assert.match(armedOut.stdout, /loop is ready and armed/);
+  });
+
+  it("doctor fails, with a non-zero exit, when the kill switch is set", () => {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(SKILL_DIR, "bin", "loop-ctl.mjs"), "doctor"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CLAUDE_PROJECT_DIR: projectDir,
+          CONTINUOUS_IMPROVEMENT_DISABLE: "1",
+        },
+      }
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /\[FAIL\] kill switch off/);
+    assert.match(result.stdout, /the loop will not run/);
+  });
+
   it("exits non-zero on an unknown subcommand", () => {
     assert.equal(ctl(["frobnicate"]).status, 1);
     assert.equal(ctl(["--help"]).status, 0);
-  });
-});
-
-describe("install-global", () => {
-  it("installs the skill and registers exactly one Stop hook, idempotently", () => {
-    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-home-"));
-    /**
-     * @param {string[]} args Installer arguments.
-     * @returns {import("node:child_process").SpawnSyncReturns<string>} Result.
-     */
-    const install = (args) =>
-      spawnSync(
-        process.execPath,
-        [path.join(SKILL_DIR, "bin", "install-global.mjs"), "--home", fakeHome, ...args],
-        { encoding: "utf8" }
-      );
-    const settingsFile = path.join(fakeHome, ".claude", "settings.json");
-    /** @returns {any} Parsed settings. */
-    const settings = () => JSON.parse(fs.readFileSync(settingsFile, "utf8"));
-    /**
-     * @param {any} s Settings object.
-     * @returns {any[]} Every Stop hook handler.
-     */
-    const stopHooks = (s) => (s.hooks?.Stop ?? []).flatMap((g) => g.hooks ?? []);
-
-    try {
-      assert.equal(install([]).status, 0);
-      const target = path.join(fakeHome, ".claude", "skills", "continuous-improvement");
-      assert.ok(fs.existsSync(path.join(target, "SKILL.md")));
-      assert.ok(fs.existsSync(path.join(target, "hooks", "stop.mjs")));
-      assert.ok(fs.existsSync(path.join(target, "LOOP_PROMPT.md")));
-      assert.ok(
-        fs.existsSync(path.join(target, "tests", "stop-hook.test.mjs")),
-        "the install must carry its own tests — it is the only copy of the skill"
-      );
-      assert.equal(stopHooks(settings()).length, 1);
-
-      assert.equal(install([]).status, 0);
-      assert.equal(stopHooks(settings()).length, 1, "re-install must not duplicate the hook");
-
-      // A pre-existing unrelated hook must survive install and uninstall.
-      const existing = settings();
-      existing.hooks.Stop.push({ hooks: [{ type: "command", command: "echo unrelated" }] });
-      fs.writeFileSync(settingsFile, JSON.stringify(existing, null, 2), "utf8");
-      assert.equal(install([]).status, 0);
-      assert.equal(stopHooks(settings()).length, 2);
-
-      assert.equal(install(["--uninstall"]).status, 0);
-      assert.equal(fs.existsSync(target), false);
-      const after = stopHooks(settings());
-      assert.equal(after.length, 1);
-      assert.equal(after[0].command, "echo unrelated");
-    } finally {
-      fs.rmSync(fakeHome, { recursive: true, force: true });
-    }
-  });
-
-  it("refuses to touch a settings.json it cannot parse", () => {
-    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-home-"));
-    try {
-      fs.mkdirSync(path.join(fakeHome, ".claude"), { recursive: true });
-      fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), "{ broken", "utf8");
-      const result = spawnSync(
-        process.execPath,
-        [path.join(SKILL_DIR, "bin", "install-global.mjs"), "--home", fakeHome],
-        { encoding: "utf8" }
-      );
-      assert.equal(result.status, 1);
-      assert.match(result.stderr, /not valid JSON/);
-      assert.equal(fs.readFileSync(path.join(fakeHome, ".claude", "settings.json"), "utf8"), "{ broken");
-    } finally {
-      fs.rmSync(fakeHome, { recursive: true, force: true });
-    }
   });
 });

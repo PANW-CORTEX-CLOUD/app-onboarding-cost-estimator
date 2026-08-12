@@ -123,7 +123,9 @@ Examples of the final line:
 - **Never** emit the trigger for work you have not actually validated. State the real gate
   result in `VALIDATION:`, including a red one.
 - If you mention the trigger words earlier in a message (e.g. quoting this file), the hook
-  reads the **last** occurrence, so keep the real control block last.
+  reads the **last** occurrence, so keep the real control block last. A `NEXT-STEP:` line with
+  more than a few lines of prose after it is **ignored** — the loop treats it as no control
+  block at all and re-prompts you — so nothing may follow the trigger line.
 - An `INVESTIGATE` turn that finds real work must **capture** it and then emit `CONTINUE` —
   investigation without capture is a wasted iteration.
 

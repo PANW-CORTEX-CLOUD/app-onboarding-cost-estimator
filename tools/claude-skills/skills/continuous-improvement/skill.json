@@ -1,0 +1,14 @@
+{
+  "name": "continuous-improvement",
+  "description": "Self-continuing implementation + improvement loop driven by an end-of-turn trigger word.",
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ~/.claude/skills/continuous-improvement/hooks/stop.mjs",
+        "timeout": 120,
+        "statusMessage": "Checking the continuous-improvement loop…"
+      }
+    ]
+  }
+}

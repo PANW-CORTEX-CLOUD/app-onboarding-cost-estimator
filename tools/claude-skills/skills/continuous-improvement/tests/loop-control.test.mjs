@@ -259,11 +259,61 @@ describe("decide", () => {
     assert.equal(state.missingMarkerStreak, 0);
   });
 
-  it("flags a scattered control block without discarding it", () => {
+  it("rejects a marker buried in prose instead of acting on it", () => {
     const control = parseControl(`NEXT-STEP: CONTINUE — x\n${"filler\n".repeat(20)}`);
-    const { verdict } = decide({ state: createState(), control });
+    const { state, verdict } = decide({ state: createState(), control });
     assert.equal(verdict.decision, "block");
-    assert.match(String(verdict.note), /not near the end/i);
+    assert.equal(verdict.reasonCode, "misplaced-marker");
+    assert.equal(state.iteration, 0, "a rejected marker must not advance the loop");
+    assert.equal(state.missingMarkerStreak, 1);
+  });
+
+  it("will not let a status report end the loop", () => {
+    // A message that documents the protocol shows the trigger words in fenced examples, and
+    // COMPLETE/BLOCKED tend to come last. Honouring the last match would stop the loop.
+    const report = [
+      "Here is what the loop does. The control block looks like this:",
+      "",
+      "```",
+      "NEXT-STEP: CONTINUE — keeps going",
+      "NEXT-STEP: COMPLETE — ends the loop",
+      "```",
+      "",
+      ...Array.from({ length: 12 }, (_, i) => `and then twelve more lines of prose, line ${i}`),
+    ].join("\n");
+    const control = parseControl(report);
+    assert.equal(control?.trigger, "COMPLETE", "the last mention does parse");
+    const { verdict } = decide({ state: createState(), control });
+    assert.equal(verdict.decision, "block", "but it must not allow the stop");
+    assert.equal(verdict.reasonCode, "misplaced-marker");
+    assert.equal(verdict.deactivate, false, "and must not disarm the loop");
+  });
+
+  it("does not match a trigger word inside a markdown table row", () => {
+    // Table pipes are not in the tolerated line-prefix set, so a summary table cannot be
+    // mistaken for a control block at all — the cheapest possible defence.
+    assert.equal(parseControl("| NEXT-STEP: BLOCKED | asks you |"), null);
+    assert.equal(parseControl("| `NEXT-STEP: COMPLETE` | ends it |"), null);
+  });
+
+  it("still honours a block with a short sign-off after it", () => {
+    const { verdict } = decide({
+      state: createState(),
+      control: parseControl("NEXT-STEP: CONTINUE — x\n\nps. one trailing line"),
+    });
+    assert.equal(verdict.reasonCode, "continue");
+  });
+
+  it("gives up on repeated misplaced markers, like missing ones", () => {
+    let state = createState();
+    const control = parseControl(`NEXT-STEP: COMPLETE — x\n${"filler\n".repeat(20)}`);
+    for (let i = 0; i < DEFAULT_CONFIG.maxMissingMarker; i += 1) {
+      state = decide({ state, control }).state;
+    }
+    const final = decide({ state, control });
+    assert.equal(final.verdict.decision, "allow");
+    assert.equal(final.verdict.reasonCode, "missing-marker-cap");
+    assert.equal(final.verdict.deactivate, false);
   });
 
   it("journals every decision and bounds the history", () => {
@@ -317,6 +367,15 @@ describe("buildFollowUp", () => {
     const out = render("INVESTIGATE — nothing", { usedAngles: ANGLES.map((a) => a.id) });
     assert.match(out, /close-out/i);
     assert.match(out, /Do not emit `INVESTIGATE` again/);
+  });
+
+  it("explains the placement rule when the marker was buried in prose", () => {
+    const control = parseControl(`NEXT-STEP: CONTINUE — x\n${"filler\n".repeat(20)}`);
+    const { state, verdict } = decide({ state: createState(), control });
+    const out = buildFollowUp({ verdict, state, config: DEFAULT_CONFIG, promptText: PROMPT_TEXT });
+    assert.match(out, /too much text followed it/);
+    assert.match(out, /final non-empty line/);
+    assert.match(out, /Do not redo the work/);
   });
 
   it("explains the format when the marker was missing", () => {
