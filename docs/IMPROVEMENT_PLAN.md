@@ -1064,6 +1064,17 @@ in exactly the network-locked environments an internal tool gets deployed into.
   external (non-localhost) requests, zero failed requests, zero ≥400 responses,
   and zero console/page errors — so re-adding a CDN `<link>`, an external image,
   or any resource that 404s fails the build.
+- **T-24.4.4** `done` **Reproducible, not hand-fetched.** The checked-in woff2 +
+  `fonts.css` are re-derivable from source by `scripts/refresh-fonts.mjs`
+  (`pnpm fonts:refresh`), a zero-dependency script that re-fetches the same
+  families/weights from Google, keeps only the latin subset, and rewrites the
+  local CSS — deterministically (byte-identical to what's committed; verified by
+  sha256). It's a manual refresh, deliberately out of the `build`/`test` chains,
+  so the binaries can be audited/reproduced instead of being an opaque blob. A
+  tighter unicode-range subset was evaluated and rejected: narrowing the CSS
+  range saves nothing (the variable woff2 still holds every glyph), and
+  re-subsetting the binary needs a toolchain dependency and risks dropping
+  `$`/`€`/`™`/typographic punctuation for a marginal win.
 
 ### Findings triaged as **not** bugs (recorded so they are not re-chased)
 

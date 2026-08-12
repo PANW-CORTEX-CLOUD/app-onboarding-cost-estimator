@@ -14,6 +14,7 @@
     "openapi:stamp": "node scripts/check-openapi-drift.mjs --write",
     "openapi:gen": "node scripts/generate-openapi-types.mjs",
     "rates:refresh-fallback": "node scripts/refresh-fallback-prices.mjs",
+    "fonts:refresh": "node scripts/refresh-fonts.mjs",
     "rates:validate": "node --experimental-strip-types scripts/validate-prices.mjs",
     "rates:validate-check": "node --experimental-strip-types scripts/validate-prices.mjs --check",
     "tf:manifest": "node scripts/derive-tf-manifest.mjs --write",
