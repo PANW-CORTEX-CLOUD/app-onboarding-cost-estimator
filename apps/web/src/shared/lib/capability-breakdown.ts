@@ -194,3 +194,38 @@ export function buildBreakdownRows(
 function pickWarning(warnings: string[], re: RegExp): string | undefined {
   return warnings.find((w) => re.test(w));
 }
+
+export type ConfidenceBandTotals = {
+  High: number;
+  Med: number;
+  Low: number;
+  total: number;
+};
+
+/**
+ * Split priced lines into dollar subtotals per confidence band.
+ *
+ * Every meter is vendor-backed now, but the *estimator's* declared confidence
+ * still varies — an audit line is High, an ADS Outpost compute line is Low — and
+ * a single headline total hides that spread. This lets the UI say "of $X, $A is
+ * High-confidence and $C is Low", so a reviewer sees how much of the number
+ * rests on the softer estimates.
+ *
+ * `total` is defined as `High + Med + Low`, so it always reconciles with the
+ * band sum: an unrecognised confidence string is folded into **Low** (an unknown
+ * confidence is never High), rather than silently dropped, so no dollar goes
+ * unaccounted for. Non-finite amounts are skipped.
+ */
+export function confidenceBandTotals(
+  rows: readonly { amount: number; confidence: string }[],
+): ConfidenceBandTotals {
+  const bands: ConfidenceBandTotals = { High: 0, Med: 0, Low: 0, total: 0 };
+  for (const r of rows) {
+    if (!Number.isFinite(r.amount)) continue;
+    if (r.confidence === "High") bands.High += r.amount;
+    else if (r.confidence === "Med") bands.Med += r.amount;
+    else bands.Low += r.amount; // Low, or any unrecognised band (conservative).
+  }
+  bands.total = bands.High + bands.Med + bands.Low;
+  return bands;
+}

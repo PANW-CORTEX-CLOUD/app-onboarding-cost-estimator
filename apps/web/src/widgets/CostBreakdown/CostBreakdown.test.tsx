@@ -100,6 +100,45 @@ describe("CostBreakdown — per-line provenance", () => {
     expect(cell.textContent).toMatch(/stale/i);
   });
 
+  it("shows a confidence-band split of the total when bands differ", () => {
+    const estimate = estimateWith([
+      {
+        provider: "azure",
+        capability: "audit_logs",
+        meterId: "eh-standard-tu",
+        amount: 100,
+        confidence: "High",
+      },
+      {
+        provider: "azure",
+        capability: "ads_outpost",
+        meterId: "scanner",
+        amount: 20,
+        confidence: "Low",
+      },
+    ] as unknown as EstimateResponse["lineItems"]);
+
+    render(<CostBreakdown estimate={estimate} />);
+    const split = screen.getByTestId("confidence-band-split");
+    expect(split.textContent).toMatch(/High/);
+    expect(split.textContent).toMatch(/Low/);
+  });
+
+  it("EDGE: hides the split when every line is one confidence band", () => {
+    const estimate = estimateWith([
+      {
+        provider: "azure",
+        capability: "audit_logs",
+        meterId: "eh-standard-tu",
+        amount: 100,
+        confidence: "High",
+      },
+    ] as unknown as EstimateResponse["lineItems"]);
+
+    render(<CostBreakdown estimate={estimate} />);
+    expect(screen.queryByTestId("confidence-band-split")).toBeNull();
+  });
+
   it("EDGE: a line with no verification renders a neutral dash, not a crash", () => {
     const estimate = estimateWith([
       {

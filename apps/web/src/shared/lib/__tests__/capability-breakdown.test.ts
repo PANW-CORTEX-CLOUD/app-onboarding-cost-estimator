@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBreakdownRows,
+  confidenceBandTotals,
   enabledCapabilitiesForLegend,
 } from "../capability-breakdown.ts";
 
@@ -73,5 +74,41 @@ describe("capability-breakdown", () => {
     const estimate = { lineItems: [], totals: { expected: 0 } };
     const rows = buildBreakdownRows(estimate as never, baseCaps, []);
     for (const r of rows) expect(r.verification).toBeUndefined();
+  });
+});
+
+describe("confidenceBandTotals", () => {
+  it("splits amounts across High/Med/Low and total reconciles", () => {
+    const b = confidenceBandTotals([
+      { amount: 100, confidence: "High" },
+      { amount: 30, confidence: "Med" },
+      { amount: 10, confidence: "Low" },
+      { amount: 5, confidence: "Med" },
+    ]);
+    expect(b.High).toBe(100);
+    expect(b.Med).toBe(35);
+    expect(b.Low).toBe(10);
+    expect(b.total).toBe(145);
+    expect(b.High + b.Med + b.Low).toBe(b.total);
+  });
+
+  it("EDGE: an unrecognised confidence folds into Low, never dropped", () => {
+    const b = confidenceBandTotals([{ amount: 42, confidence: "???" }]);
+    expect(b.Low).toBe(42);
+    expect(b.total).toBe(42);
+  });
+
+  it("EDGE: non-finite amounts are skipped, not propagated as NaN", () => {
+    const b = confidenceBandTotals([
+      { amount: Number.NaN, confidence: "High" },
+      { amount: 20, confidence: "High" },
+    ]);
+    expect(b.High).toBe(20);
+    expect(b.total).toBe(20);
+  });
+
+  it("EDGE: empty input is all zeros", () => {
+    const b = confidenceBandTotals([]);
+    expect(b).toStrictEqual({ High: 0, Med: 0, Low: 0, total: 0 });
   });
 });

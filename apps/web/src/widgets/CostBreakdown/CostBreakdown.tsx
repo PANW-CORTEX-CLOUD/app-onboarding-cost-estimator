@@ -6,6 +6,7 @@ import type { EstimateCapabilities } from "../../entities/estimate/types.ts";
 import type { EstimateResponse } from "../../entities/estimate/types.ts";
 import {
   buildBreakdownRows,
+  confidenceBandTotals,
   type BreakdownRow,
 } from "../../shared/lib/capability-breakdown.ts";
 import { capabilityLabel } from "../../shared/model/capability-labels.ts";
@@ -83,6 +84,21 @@ export function CostBreakdown({
           {usd(estimate.totals.expected)} / {usd(estimate.totals.high)}
         </p>
       ) : null}
+      {(() => {
+        // How much of the total rests on softer estimates: split the priced
+        // lines by the estimator's declared confidence. Only shown when there is
+        // a spread worth reading (more than one band carries a non-zero amount).
+        const bands = confidenceBandTotals(rows);
+        const populated = [bands.High, bands.Med, bands.Low].filter(
+          (v) => v > 0,
+        ).length;
+        return bands.total > 0 && populated > 1 ? (
+          <p data-testid="confidence-band-split" className="muted">
+            By confidence — High: {usd(bands.High)} · Med: {usd(bands.Med)} ·
+            Low: {usd(bands.Low)}
+          </p>
+        ) : null;
+      })()}
       <table>
         <thead>
           <tr>
