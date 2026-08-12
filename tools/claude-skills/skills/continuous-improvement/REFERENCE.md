@@ -23,9 +23,11 @@ Notes on the deliberate leniency:
 - **Case-insensitive** on the trigger word.
 - The separator between trigger and prose may be an em dash, en dash, hyphen, colon or
   nothing at all.
-- Placement is recorded: `final` (nothing follows — what the protocol asks for), `trailing`
-  (≤ 8 non-empty lines follow), or `scattered` (more). A `scattered` match is still honoured
-  but is flagged to the user, because it is usually quoted prose rather than a real block.
+- Placement decides whether the line counts at all: `final` (nothing follows — what the
+  protocol asks for) and `trailing` (≤ 8 non-empty lines follow) are honoured; `scattered`
+  (more than that) is **rejected** and re-prompted exactly like a missing block. A trigger
+  word buried in prose is almost always a message *describing* the protocol — a summary
+  table, this file — and acting on it would let a status report end the loop.
 
 Optional companion lines, read from the same message for the journal, all optional and
 matched the same way: `ITERATION-SUMMARY:`, `VALIDATION:`, `CAPTURED:`.
@@ -48,6 +50,7 @@ angle in catalogue order is handed out instead.
 | `COMPLETE` | allow stop | unchanged | **no** — sentinel removed |
 | `BLOCKED` | allow stop | unchanged | yes — resumes on the next turn |
 | *(no marker)* | `block` → re-prompt for the block | unchanged | yes |
+| *(marker buried in prose)* | `block` → re-prompt, explaining the placement rule | unchanged | yes |
 
 `COMPLETE` and `BLOCKED` are honoured **before** any cap: an explicit request to stop always
 wins.
@@ -63,7 +66,7 @@ All under `<project>/.claude/`:
 | `continuous-improvement.active` | no (gitignored) | Activation sentinel. **Presence = armed.** Deleting it stops the loop after the current turn. |
 | `continuous-improvement.state.json` | no (gitignored) | Loop state machine: iteration, mode, used angles, bounded history. |
 | `continuous-improvement.config.json` | yes, if you want project bounds | Overrides for the caps below. |
-| `continuous-improvement/journal.jsonl` | no (gitignored) | Append-only decision journal, one JSON object per Stop event. |
+| `continuous-improvement/journal.jsonl` | no (gitignored) | Decision journal, one JSON object per Stop event. Trimmed to the newest 500 entries once it passes 1 MB. |
 | `continuous-improvement/turns/*.lock` | no (gitignored) | Per-turn claim files that stop a doubly-registered hook from counting a turn twice. Pruned after 24 h. |
 
 ### State shape (`version: 1`)
@@ -181,13 +184,24 @@ prompt, so an `INVESTIGATE` turn gets a checklist rather than a mood.
 |---|---|---|
 | Turn ends and nothing continues | Loop not armed | `loop-ctl.mjs status`; if `armed: no`, run `enable`. |
 | Hook never runs | Not registered | Check `~/.claude/settings.json` for a Stop entry pointing at this skill; re-run the repo installer to re-register. |
-| "Turn ended without a LOOP CONTROL block" | The `NEXT-STEP:` line was missing or not last | Put the control block last, with the trigger line as the final non-empty line. |
+| "Turn ended without a LOOP CONTROL block" | The `NEXT-STEP:` line was missing | Put the control block last, as the final non-empty line. |
+| "too much text followed it" | The `NEXT-STEP:` line was present but buried in prose | Same fix: nothing may follow the trigger line. |
 | Loop stopped early | `COMPLETE`, `BLOCKED`, iteration cap, or a stand-down `stop_reason` | `loop-ctl.mjs journal -n 5` shows the exact `reasonCode`. |
 | Loop will not stop | Sentinel still present | `loop-ctl.mjs disable`, or `CONTINUOUS_IMPROVEMENT_DISABLE=1`, or delete `.claude/continuous-improvement.active`. |
 | Iterations advancing two at a time | Hook registered twice **and** the turn-claim directory is unwritable | Make `.claude/continuous-improvement/turns/` writable, or remove one registration. |
 | Same angle twice | State was reset between runs (`enable` without `--keep-state`) | Use `enable --keep-state` to resume a run. |
 
-Read the journal first — it records, per Stop event: trigger, placement, mode, angle,
+Start with `doctor` — it checks, in one command, every precondition that has to hold for the
+hook to run at all: node version, the skill's files, whether any settings file registers the
+`Stop` hook (and whether more than one does), the kill switch, whether the project is armed,
+and whether the state directory is writable. It exits non-zero when something blocking is
+wrong, so it also works as a gate in a script.
+
+```bash
+node bin/loop-ctl.mjs doctor
+```
+
+Then read the journal — it records, per Stop event: trigger, placement, mode, angle,
 decision, `reasonCode`, and the `VALIDATION:` line the iteration reported.
 
 ```bash

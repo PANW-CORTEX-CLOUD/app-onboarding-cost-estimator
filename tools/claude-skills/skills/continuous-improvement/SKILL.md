@@ -36,11 +36,12 @@ node ${CLAUDE_SKILL_DIR}/bin/loop-ctl.mjs enable --max 15
 node ${CLAUDE_SKILL_DIR}/bin/loop-ctl.mjs status     # armed? iteration? angles swept?
 node ${CLAUDE_SKILL_DIR}/bin/loop-ctl.mjs angles     # catalogue, [x] = already swept
 node ${CLAUDE_SKILL_DIR}/bin/loop-ctl.mjs journal    # every decision the hook made
+node ${CLAUDE_SKILL_DIR}/bin/loop-ctl.mjs doctor     # why isn't the loop running?
 node ${CLAUDE_SKILL_DIR}/bin/loop-ctl.mjs disable    # stop after the current turn
 ```
 
 `$ARGUMENTS` maps to those subcommands: `start` → `enable`, `stop` → `disable`, and
-`status` / `angles` / `journal` pass straight through. With no argument, arm the loop and
+`status` / `angles` / `journal` / `doctor` pass straight through. With no argument, arm the loop and
 begin the first iteration.
 
 ## What to do when this skill is invoked
@@ -107,7 +108,7 @@ Full catalogue with per-angle checklists: [`REFERENCE.md`](REFERENCE.md) and
 - **Fail-open.** Any error inside the hook lets the session stop. A broken hook must never
   trap a session.
 - **Auditable.** Every decision is appended to
-  `.claude/continuous-improvement/journal.jsonl` with the trigger, the mode, the angle and
+  `.claude/continuous-improvement/journal.jsonl` (trimmed at 1 MB, newest 500 kept) with the trigger, the mode, the angle and
   the validation line you reported.
 - **Interruptible.** Deleting the sentinel, running `loop-ctl.mjs disable`, or setting
   `CONTINUOUS_IMPROVEMENT_DISABLE=1` stops it. A user message during a loop is a normal

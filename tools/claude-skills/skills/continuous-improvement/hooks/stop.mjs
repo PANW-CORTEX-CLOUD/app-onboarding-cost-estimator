@@ -64,6 +64,10 @@ const PATHS = Object.freeze({
 /** Turn locks older than this are pruned; they only exist to de-duplicate one turn. */
 const TURN_LOCK_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Journal size that triggers a trim, and how many recent entries survive it. */
+const JOURNAL_MAX_BYTES = 1024 * 1024;
+const JOURNAL_KEEP_LINES = 500;
+
 /**
  * `stop_reason` values that mean the turn did not end normally. Looping on these would
  * re-prompt into the same wall, so the hook stands down and lets the session stop.
@@ -215,6 +219,19 @@ function journal(claudeDir, entry) {
   try {
     const file = path.join(claudeDir, PATHS.journal);
     fs.mkdirSync(path.dirname(file), { recursive: true });
+    // Rotate before appending. The journal is the only unbounded thing this hook writes —
+    // one line per Stop event, forever, in a directory the user never cleans. Trimming to
+    // the most recent entries keeps it useful for debugging without growing without limit,
+    // which is exactly the "collections that only ever grow" smell the loop hunts for
+    // elsewhere.
+    if (fs.existsSync(file) && fs.statSync(file).size > JOURNAL_MAX_BYTES) {
+      const kept = fs
+        .readFileSync(file, "utf8")
+        .split("\n")
+        .filter((l) => l.trim() !== "")
+        .slice(-JOURNAL_KEEP_LINES);
+      fs.writeFileSync(file, `${kept.join("\n")}\n`, "utf8");
+    }
     fs.appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
   } catch {
     /* ignore */

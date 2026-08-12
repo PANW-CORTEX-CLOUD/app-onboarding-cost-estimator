@@ -269,6 +269,23 @@ describe("stop hook — inputs and robustness", () => {
     assert.equal(JSON.parse(result.stdout).decision, "block", "no message = missing marker");
   });
 
+  it("trims the journal instead of letting it grow forever", () => {
+    const journalFile = path.join(projectDir, ".claude", "continuous-improvement", "journal.jsonl");
+    fs.mkdirSync(path.dirname(journalFile), { recursive: true });
+    // One line per Stop event, forever, in a directory nobody cleans: write past the 1 MB
+    // rotation threshold and confirm the next decision trims it.
+    const filler = `${JSON.stringify({ event: "old", pad: "x".repeat(400) })}\n`;
+    fs.writeFileSync(journalFile, filler.repeat(3000), "utf8");
+    assert.ok(fs.statSync(journalFile).size > 1024 * 1024);
+
+    runHook({ last_assistant_message: finalMessage("CONTINUE — after a long run") });
+
+    const lines = fs.readFileSync(journalFile, "utf8").trim().split("\n");
+    assert.ok(lines.length <= 501, `journal kept ${lines.length} lines`);
+    assert.ok(fs.statSync(journalFile).size < 1024 * 1024);
+    assert.equal(JSON.parse(lines.at(-1)).event, "decision", "the newest entry survives");
+  });
+
   it("writes an auditable journal entry per decision", () => {
     runHook({ last_assistant_message: finalMessage("INVESTIGATE — plan empty"), session_id: "s1" });
     const journal = fs
@@ -344,6 +361,36 @@ describe("loop-ctl CLI", () => {
     assert.equal(status.armed, true);
     assert.equal(status.state.iteration, 1);
     assert.match(ctl(["journal", "-n", "1"]).stdout, /"reasonCode":"continue"/);
+  });
+
+  it("doctor passes when everything is in place, and warns when unarmed", () => {
+    const out = ctl(["doctor"]);
+    assert.equal(out.status, 0, out.stdout);
+    assert.match(out.stdout, /\[warn\] armed for this project/);
+    assert.match(out.stdout, /arm it with/);
+
+    ctl(["enable"]);
+    const armedOut = ctl(["doctor"]);
+    assert.equal(armedOut.status, 0);
+    assert.match(armedOut.stdout, /loop is ready and armed/);
+  });
+
+  it("doctor fails, with a non-zero exit, when the kill switch is set", () => {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(SKILL_DIR, "bin", "loop-ctl.mjs"), "doctor"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CLAUDE_PROJECT_DIR: projectDir,
+          CONTINUOUS_IMPROVEMENT_DISABLE: "1",
+        },
+      }
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /\[FAIL\] kill switch off/);
+    assert.match(result.stdout, /the loop will not run/);
   });
 
   it("exits non-zero on an unknown subcommand", () => {

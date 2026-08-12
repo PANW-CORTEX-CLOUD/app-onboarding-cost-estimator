@@ -54,6 +54,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Piping to `head`, `less` or any reader that exits early closes stdout mid-write. Node's
+// default is an unhandled EPIPE that crashes with a stack trace and a non-zero exit — which
+// for an installer looks exactly like a failed install. Exit quietly instead: the work is
+// either already done or was never started.
+process.stdout.on("error", (err) => {
+  if (/** @type {NodeJS.ErrnoException} */ (err)?.code === "EPIPE") process.exit(0);
+  throw err;
+});
+
 /**
  * Locate the repository root by walking up from this script until a `skills/` directory
  * appears. Derived rather than hardcoded so the installer keeps working wherever it is
