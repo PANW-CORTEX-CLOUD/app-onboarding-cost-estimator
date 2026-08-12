@@ -6,20 +6,23 @@ of that file.
 
 ## How to use it
 
-1. In the estimator, open **Inputs → Import** and click **Download plan
-   template**. You get `cortex-cost-plan-template.csv`.
-2. Open it in Excel (or any spreadsheet / text editor). It is a two-column
-   `key,value` sheet, pre-filled with a realistic example.
-3. Edit the **value** column: turn capabilities on/off, enter your volumes.
-   Do **not** rename the keys. Save as CSV.
-4. Back in the estimator, **Import inputs CSV** and pick your file. The tool
-   validates it, applies it, and shows the cost. Nothing is priced from a number
-   the vendor does not publish.
+1. In the estimator, open **Inputs → Import** and download a template — either
+   **Download Excel template** (`.xlsx`, native Excel) or **Download CSV
+   template** (`.csv`). Both carry the same two-column `key`/`value` layout,
+   pre-filled with a realistic example.
+2. Open it in Excel (or any spreadsheet). Edit the **value** column: turn
+   capabilities on/off, enter your volumes. Do **not** rename the keys.
+3. Save it (keep it as `.xlsx`, or save as `.csv` — either works).
+4. Back in the estimator, **Import plan file** and pick your file. The tool
+   accepts `.xlsx` and `.csv`, validates it against the same rules for both,
+   applies it, and shows the cost. Nothing is priced from a number the vendor
+   does not publish.
 
-Excel opens and saves `.csv` natively (File → Save As → CSV), so "fill it in
-Excel" works without any special export. A binary `.xlsx` is intentionally **not**
-required — it would need a third-party parser, and this project keeps its
-dependency surface (and supply-chain exposure) minimal.
+Both formats are held to identical validation — a `.xlsx` upload is turned into
+the same key/value map a `.csv` produces and run through one shared validator, so
+the rules can never diverge between the two. The Excel reader (ExcelJS) is
+loaded only when you actually use the Excel path, so it never weighs on the rest
+of the app.
 
 ## Format rules
 

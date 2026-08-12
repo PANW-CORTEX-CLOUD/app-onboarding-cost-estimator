@@ -291,9 +291,13 @@ describe("REQ-21 — customer plan-file template", () => {
     expect(parsed.ok).toBe(false);
   });
 
-  it("the panel offers a Download plan template button", () => {
+  it("the panel offers both CSV and Excel template downloads", () => {
     const getState = (): EstimatorInputsState => sample;
     render(<InputsCsvPanel getState={getState} onImport={vi.fn()} />);
     expect(screen.getByTestId("download-plan-template")).toBeInTheDocument();
+    expect(screen.getByTestId("download-xlsx-template")).toBeInTheDocument();
+    // The import input accepts .xlsx as well as .csv.
+    const input = screen.getByTestId("import-inputs-csv") as HTMLInputElement;
+    expect(input.getAttribute("accept")).toMatch(/\.xlsx/);
   });
 });

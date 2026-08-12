@@ -9,7 +9,17 @@ import {
   parseEstimatorInputsCsv,
   type EstimatorInputsState,
 } from "../../features/estimator-inputs-csv/estimatorInputsCsv.ts";
+import {
+  XLSX_MIME,
+  buildCustomerPlanWorkbook,
+  parseEstimatorInputsXlsx,
+} from "../../features/estimator-inputs-csv/estimatorInputsXlsx.ts";
 import { downloadBlob } from "../../features/export-estimate/buildExport.ts";
+
+/** True when the picked file is an Excel workbook (by name or MIME). */
+function isXlsx(file: File): boolean {
+  return /\.xlsx$/i.test(file.name) || file.type === XLSX_MIME;
+}
 
 export type InputsCsvPanelProps = {
   /** Current UI inputs snapshot for download. */
@@ -49,10 +59,50 @@ export function InputsCsvPanel({ getState, onImport }: InputsCsvPanelProps) {
     setStatus("Downloaded plan template — fill it in Excel, then Import");
   }
 
+  /** Download the plan template as a native Excel workbook. */
+  async function onDownloadXlsxTemplate() {
+    setErrors([]);
+    setStatus(null);
+    try {
+      const buffer = await buildCustomerPlanWorkbook();
+      downloadBlob(
+        "cortex-cost-plan-template.xlsx",
+        new Blob([buffer], { type: XLSX_MIME }),
+      );
+      setStatus("Downloaded Excel template — fill it in, then Import");
+    } catch {
+      setErrors(["Could not generate the Excel template"]);
+    }
+  }
+
+  function applyParsed(
+    parsed: { ok: true; state: EstimatorInputsState; keyCount: number } | { ok: false; errors: string[] },
+  ) {
+    if (!parsed.ok) {
+      setErrors(parsed.errors);
+      return;
+    }
+    onImport(parsed.state, parsed.keyCount);
+    setStatus(`Imported ${parsed.keyCount} keys · re-estimating…`);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
   function onFile(file: File | null) {
     setErrors([]);
     setStatus(null);
     if (!file) return;
+
+    // Excel workbook → read bytes and parse via the lazy-loaded xlsx reader; the
+    // strict validation is shared with the CSV path.
+    if (isXlsx(file)) {
+      void file
+        .arrayBuffer()
+        .then(parseEstimatorInputsXlsx)
+        .then(applyParsed)
+        .catch(() => setErrors(["Failed to read Excel file"]));
+      return;
+    }
+
     if (file.size > 256 * 1024) {
       setErrors([`File exceeds 256KiB cap (${file.size} bytes)`]);
       return;
@@ -60,14 +110,7 @@ export function InputsCsvPanel({ getState, onImport }: InputsCsvPanelProps) {
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result ?? "");
-      const parsed = parseEstimatorInputsCsv(text, file.size);
-      if (!parsed.ok) {
-        setErrors(parsed.errors);
-        return;
-      }
-      onImport(parsed.state, parsed.keyCount);
-      setStatus(`Imported ${parsed.keyCount} keys · re-estimating…`);
-      if (fileRef.current) fileRef.current.value = "";
+      applyParsed(parseEstimatorInputsCsv(text, file.size));
     };
     reader.onerror = () => setErrors(["Failed to read file"]);
     reader.readAsText(file);
@@ -83,10 +126,17 @@ export function InputsCsvPanel({ getState, onImport }: InputsCsvPanelProps) {
       <p className="export-actions">
         <button
           type="button"
+          data-testid="download-xlsx-template"
+          onClick={() => void onDownloadXlsxTemplate()}
+        >
+          Download Excel template
+        </button>
+        <button
+          type="button"
           data-testid="download-plan-template"
           onClick={onDownloadTemplate}
         >
-          Download plan template
+          Download CSV template
         </button>
         <button
           type="button"
@@ -96,11 +146,11 @@ export function InputsCsvPanel({ getState, onImport }: InputsCsvPanelProps) {
           Download inputs CSV
         </button>
         <label className="inputs-csv-import-label">
-          Import inputs CSV
+          Import plan file (.xlsx or .csv)
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             data-testid="import-inputs-csv"
             onChange={(e) => onFile(e.target.files?.[0] ?? null)}
           />

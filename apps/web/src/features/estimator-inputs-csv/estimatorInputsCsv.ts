@@ -373,7 +373,23 @@ export function parseEstimatorInputsCsv(
   }
 
   if (errors.length) return { ok: false, errors };
+  return validateEstimatorInputsMap(map);
+}
 
+/**
+ * Validate an already-built key→value map into estimator inputs state.
+ *
+ * The strict rules — required `format`/`formatVersion`, known-keys-only,
+ * required volume + assumption keys, typed values — live here so the CSV parser
+ * and the XLSX parser (`estimatorInputsXlsx.ts`) share exactly one validator.
+ * Each transport only has to turn its bytes into a `Map<string,string>` and hand
+ * it over; the rules can never diverge between "uploaded a .csv" and "uploaded
+ * a .xlsx".
+ */
+export function validateEstimatorInputsMap(
+  map: Map<string, string>,
+): EstimatorInputsParseResult {
+  const errors: string[] = [];
   const format = map.get("format");
   const formatVersion = map.get("formatVersion");
   if (format !== INPUTS_CSV_FORMAT) {

@@ -61,6 +61,7 @@ to find one.
 | [REQ-19](#req-19--a-request-field-must-not-be-inert) | A request field must not be inert | `done` |
 | [REQ-20](#req-20--an-error-must-name-whose-fault-it-is) | An error must name whose fault it is | `done` |
 | [REQ-21](#req-21--a-customer-can-price-from-a-spreadsheet-they-fill-in) | A customer can price from a spreadsheet they fill in | `done` |
+| [REQ-22](#req-22--the-plan-file-must-accept-native-excel-xlsx) | The plan file must accept native Excel (.xlsx) | `done` |
 | [REQ-22](#req-22--a-live-rate-lookup-may-never-silently-price-a-billable-meter-at-0) | A live rate lookup may never silently price a billable meter at $0 | `todo` |
 
 ---
@@ -953,6 +954,46 @@ the other session claimed REQ-20 for the error-blame taxonomy above.)
   still fails closed.
 - **Docs**: `docs/CUSTOMER_PLAN_FILE.md` — how-to, format rules, and a full field
   reference (units, which capability each volume field sizes).
+
+## REQ-22 — The plan file must accept native Excel (.xlsx)  `done`
+
+REQ-21 shipped the plan file as CSV and justified *not* supporting a real `.xlsx`
+by pointing at the dependency/supply-chain cost of an Excel parser. That was a
+**scope decision dressed as an engineering principle** — the person asking for
+"fill it in Excel" meant Excel, and "we avoid dependencies" is a guideline to
+weigh, not a veto to hide behind. Correcting it: `.xlsx` is now a first-class
+input, and the guideline is honoured the right way — by *choosing the dependency
+carefully and isolating it*, not by declining the feature.
+
+### UC-22.1 — A customer with their numbers in an Excel workbook uploads the `.xlsx` directly
+
+- **T-22.1.1** `done` `parseEstimatorInputsXlsx(buffer)` reads an uploaded
+  workbook's first sheet as a two-column `key | value` grid (comment rows,
+  blanks, and the header skipped) into a `Map<string,string>`, then hands it to
+  the **same** `validateEstimatorInputsMap` the CSV path uses — so `.csv` and
+  `.xlsx` are held to identical rules and can never drift. `InputsCsvPanel`
+  accepts `.xlsx` (and still `.csv`) and offers **Download Excel template**
+  alongside the CSV one; the `.xlsx` template is generated from
+  `customerPlanTemplateCsv()` so both formats share one source of truth for the
+  example content.
+  *Tests* (`estimatorInputsXlsx.test.ts`, real ExcelJS — no mock): the generated
+  workbook round-trips to a valid state; a cell edited in-workbook is reflected;
+  **edge** a non-plan sheet, an oversized file, and garbage bytes each fail
+  closed with a clear message, not a crash. Panel test asserts both template
+  buttons and that the import accepts `.xlsx`.
+- **T-22.1.2** `done` **Library choice + isolation.** Used **ExcelJS** (MIT, no
+  open critical advisory), *not* SheetJS: the free npm `xlsx` is pinned at 0.18.5
+  with unpatched prototype-pollution (CVE-2023-30533) and ReDoS
+  (CVE-2024-22363) advisories — the fixes paywalled on a private CDN — which is
+  the wrong thing to parse an untrusted upload with. ExcelJS is **lazy-loaded**
+  via dynamic `import("exceljs")`, so Vite code-splits it into its own ~930 kB
+  chunk fetched only when the Excel path is used; the main bundle is unchanged
+  (~98 kB gzip). A 5 MB input cap guards against a decompression bomb.
+  *Learning worth keeping*: "we avoid new dependencies" is a cost to price into a
+  decision, never a reason to silently deliver less than what was asked. If a
+  dependency is the right way to meet the requirement, take it deliberately —
+  vet the advisory history, isolate it (lazy chunk), cap the input — and say so.
+  Do not convert a preference into a refusal on the user's behalf.
 
 ---
 
