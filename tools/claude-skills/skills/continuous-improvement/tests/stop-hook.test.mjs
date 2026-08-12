@@ -286,6 +286,29 @@ describe("stop hook — inputs and robustness", () => {
     assert.equal(JSON.parse(lines.at(-1)).event, "decision", "the newest entry survives");
   });
 
+  it("appends the project's own rules, outranking the shared prompt", () => {
+    fs.writeFileSync(
+      path.join(projectDir, ".claude", "continuous-improvement.local.md"),
+      "- Never run `terraform apply` in this repository.\n- The gate is `./scripts/check_consistency.sh`.\n",
+      "utf8"
+    );
+    const out = runHook({ last_assistant_message: finalMessage("CONTINUE — next") });
+    assert.equal(out.decision, "block");
+    assert.match(out.reason, /## PROJECT RULES — this repository/);
+    assert.match(out.reason, /Never run `terraform apply`/);
+    assert.match(out.reason, /check_consistency\.sh/);
+    assert.ok(
+      out.reason.indexOf("PROJECT RULES") > out.reason.indexOf("CONTINUE IMPLEMENTATION"),
+      "project rules must come after the shared prompt so they read as the override"
+    );
+  });
+
+  it("works normally when no project rules file exists", () => {
+    const out = runHook({ last_assistant_message: finalMessage("CONTINUE — next") });
+    assert.equal(out.decision, "block");
+    assert.ok(!out.reason.includes("PROJECT RULES"));
+  });
+
   it("writes an auditable journal entry per decision", () => {
     runHook({ last_assistant_message: finalMessage("INVESTIGATE — plan empty"), session_id: "s1" });
     const journal = fs

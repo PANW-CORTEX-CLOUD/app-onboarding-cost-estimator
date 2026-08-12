@@ -227,6 +227,77 @@ describe("install — repository checked out AS ~/.claude", () => {
   });
 });
 
+describe("install --project", () => {
+  it("installs into the repository's own .claude and rewrites the hook path", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ccs-target-"));
+    try {
+      const result = spawnSync(process.execPath, [INSTALLER, "--project", repo], {
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(fs.existsSync(path.join(repo, ".claude", "skills", "continuous-improvement", "SKILL.md")));
+
+      const s = JSON.parse(fs.readFileSync(path.join(repo, ".claude", "settings.json"), "utf8"));
+      const command = s.hooks.Stop[0].hooks[0].command;
+      // A checked-in hook must resolve for everyone who clones the repo, not just the
+      // machine that installed it — so it cannot point at the installer's home directory.
+      assert.match(command, /\$\{CLAUDE_PROJECT_DIR\}\/\.claude\/skills\/continuous-improvement/);
+      assert.ok(!command.includes("~/.claude"), "must not point at a home directory");
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves an existing project's other hooks and skills untouched", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ccs-target-"));
+    try {
+      fs.mkdirSync(path.join(repo, ".claude", "skills", "their-skill"), { recursive: true });
+      fs.writeFileSync(path.join(repo, ".claude", "skills", "their-skill", "SKILL.md"), "# theirs\n");
+      fs.writeFileSync(
+        path.join(repo, ".claude", "settings.json"),
+        JSON.stringify(
+          {
+            hooks: {
+              UserPromptSubmit: [
+                { hooks: [{ type: "command", command: "python3", args: ["their_hook.py"] }] },
+              ],
+            },
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      assert.equal(spawnSync(process.execPath, [INSTALLER, "--project", repo], { encoding: "utf8" }).status, 0);
+
+      const s = JSON.parse(fs.readFileSync(path.join(repo, ".claude", "settings.json"), "utf8"));
+      assert.equal(s.hooks.UserPromptSubmit.length, 1, "their hook must survive");
+      assert.equal(s.hooks.UserPromptSubmit[0].hooks[0].command, "python3");
+      assert.equal(s.hooks.Stop.length, 1, "ours is added alongside");
+      assert.ok(fs.existsSync(path.join(repo, ".claude", "skills", "their-skill", "SKILL.md")));
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("uninstalls cleanly from a project", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ccs-target-"));
+    try {
+      spawnSync(process.execPath, [INSTALLER, "--project", repo], { encoding: "utf8" });
+      const result = spawnSync(process.execPath, [INSTALLER, "--project", repo, "--uninstall"], {
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(fs.existsSync(path.join(repo, ".claude", "skills", "continuous-improvement")), false);
+      const s = JSON.parse(fs.readFileSync(path.join(repo, ".claude", "settings.json"), "utf8"));
+      assert.equal(s.hooks, undefined);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("install — fails closed", () => {
   /**
    * @param {Record<string, any>} manifests Synthetic skills.

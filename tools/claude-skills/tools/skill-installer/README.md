@@ -32,6 +32,17 @@ The installer detects this case by resolved path — source and target being the
 directory — and skips the copy instead of deleting the skill it is installing. It says
 `already in place` when that happens.
 
+**C — install into a single repository**, so the skill and its hook are checked in and
+travel with that repo for everyone who clones it:
+
+```bash
+node tools/skill-installer/install.mjs --project /path/to/repo
+```
+
+The hook command is rewritten from `~/.claude/…` to `${CLAUDE_PROJECT_DIR}/.claude/…`, which
+is what makes a committed hook resolve on someone else's machine. Existing hooks and skills
+in that repository are preserved.
+
 Either way, restart Claude Code (or start a new session) afterwards.
 
 ## Options
@@ -42,7 +53,8 @@ node tools/skill-installer/install.mjs continuous-improvement  # install just th
 node tools/skill-installer/install.mjs --list                  # available, [x] = installed
 node tools/skill-installer/install.mjs --dry-run               # show the plan, touch nothing
 node tools/skill-installer/install.mjs --uninstall [names…]    # remove skills and their hooks
-node tools/skill-installer/install.mjs --home DIR              # target a different HOME
+node tools/skill-installer/install.mjs --project DIR            # install into DIR/.claude (checked in)
+node tools/skill-installer/install.mjs --home DIR               # target a different HOME
 ```
 
 `install.sh` is a thin wrapper: update the checkout, then run `install.mjs` with the same
@@ -92,8 +104,8 @@ The installer is manifest driven and never needs editing to add a skill.
 ## Tests
 
 ```bash
-node --test 'tools/skill-installer/tests/*.test.mjs'      # 22 — the installer
-node --test 'skills/continuous-improvement/tests/*.test.mjs'  # 60 — the loop skill
+node --test 'tools/skill-installer/tests/*.test.mjs'      # 25 — the installer
+node --test 'skills/continuous-improvement/tests/*.test.mjs'  # 72 — the loop skill
 ```
 
 Both run in CI on every push (`.github/workflows/claude-skills-test.yml`). Node ≥ 18, no

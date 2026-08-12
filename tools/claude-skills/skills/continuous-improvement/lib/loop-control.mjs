@@ -430,9 +430,12 @@ export function decide({ state, control, config = DEFAULT_CONFIG, now = new Date
  * @param {LoopState} args.state The state *after* {@link decide}.
  * @param {LoopConfig} args.config Active bounds.
  * @param {string} args.promptText Contents of `LOOP_PROMPT.md`.
+ * @param {string | null} [args.localRules] Optional per-project appendix
+ *        (`.claude/continuous-improvement.local.md`), appended last and declared to outrank
+ *        the generic prompt, so a repository can constrain the loop without forking it.
  * @returns {string} The `reason` string for the Stop hook's JSON output.
  */
-export function buildFollowUp({ verdict, state, config, promptText }) {
+export function buildFollowUp({ verdict, state, config, promptText, localRules = null }) {
   const header = [
     "# CONTINUOUS IMPROVEMENT LOOP — next iteration",
     "",
@@ -518,5 +521,19 @@ export function buildFollowUp({ verdict, state, config, promptText }) {
     "treat it as the standing instruction for this turn.",
     "",
     promptText.trim(),
+    ...(localRules
+      ? [
+          "",
+          "---",
+          "",
+          "## PROJECT RULES — this repository",
+          "",
+          "These come from `.claude/continuous-improvement.local.md` in this project. Where they",
+          "conflict with anything above, **these win**: the prompt above is shared by every",
+          "repository, this file is specific to the one you are working in.",
+          "",
+          localRules.trim(),
+        ]
+      : []),
   ].join("\n");
 }

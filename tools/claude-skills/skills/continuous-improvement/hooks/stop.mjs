@@ -57,6 +57,7 @@ const PATHS = Object.freeze({
   active: "continuous-improvement.active",
   state: "continuous-improvement.state.json",
   config: "continuous-improvement.config.json",
+  local: "continuous-improvement.local.md",
   journal: path.join("continuous-improvement", "journal.jsonl"),
   turns: path.join("continuous-improvement", "turns"),
 });
@@ -382,6 +383,18 @@ async function main() {
   const stateFile = path.join(claudeDir, PATHS.state);
   const state = normalizeState(readJsonFile(stateFile), { now, sessionId });
 
+  // Optional per-project appendix. The loop prompt is shared by every repository, so a
+  // repository with its own rules — a forbidden operation, a different gate command, a
+  // plan file to follow — would otherwise have to fork it and drift. This file is appended
+  // to the follow-up instead, and is declared to outrank the generic text where the two
+  // disagree, which keeps one prompt for everyone.
+  let localRules = null;
+  try {
+    localRules = fs.readFileSync(path.join(claudeDir, PATHS.local), "utf8").trim() || null;
+  } catch {
+    /* absent is the normal case */
+  }
+
   const { text: message, source } = lastAssistantMessage(payload);
 
   if (!claimTurn(claudeDir, sessionId, message)) {
@@ -445,7 +458,7 @@ async function main() {
 
   emit({
     decision: "block",
-    reason: buildFollowUp({ verdict, state: nextState, config, promptText }),
+    reason: buildFollowUp({ verdict, state: nextState, config, promptText, localRules }),
     ...(verdict.note ? { systemMessage: verdict.note } : {}),
   });
 }

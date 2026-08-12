@@ -31,6 +31,7 @@
  * node tools/skill-installer/install.mjs --list                # what is available, and what is installed
  * node tools/skill-installer/install.mjs --dry-run             # show the plan, touch nothing
  * node tools/skill-installer/install.mjs --uninstall [names…]  # remove skills and their hooks
+ * node tools/skill-installer/install.mjs --project .            # install into THIS repo's .claude
  * node tools/skill-installer/install.mjs --home /tmp/fake-home # target a different HOME (used by the tests)
  * ```
  *
@@ -104,7 +105,7 @@ const EXCLUDE = new Set(["node_modules", ".DS_Store", ".git"]);
  * Parse CLI arguments.
  *
  * @param {string[]} argv Raw arguments (without node and script path).
- * @returns {{names: string[], list: boolean, dryRun: boolean, uninstall: boolean, home: string}} Options.
+ * @returns {{names: string[], list: boolean, dryRun: boolean, uninstall: boolean, home: string, project: boolean}} Options.
  */
 function parseArgs(argv) {
   /** @type {string[]} */
@@ -113,13 +114,15 @@ function parseArgs(argv) {
   let list = false;
   let dryRun = false;
   let uninstall = false;
+  let project = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--home") {
+    if (arg === "--home" || arg === "--project") {
       const value = argv[i + 1];
-      if (!value) fail("--home needs a directory");
+      if (!value) fail(`${arg} needs a directory`);
       home = path.resolve(value);
+      project = arg === "--project";
       i += 1;
     } else if (arg === "--list") list = true;
     else if (arg === "--dry-run") dryRun = true;
@@ -130,7 +133,7 @@ function parseArgs(argv) {
     } else if (arg.startsWith("-")) fail(`unknown option: ${arg}`);
     else names.push(arg);
   }
-  return { names, list, dryRun, uninstall, home };
+  return { names, list, dryRun, uninstall, home, project };
 }
 
 /**
@@ -339,13 +342,26 @@ function removeHooks(settings, name) {
  * @param {Skill} skill The skill being installed.
  * @returns {number} Entries added.
  */
-function addHooks(settings, skill) {
+function addHooks(settings, skill, projectMode) {
   let added = 0;
   for (const [event, handlers] of Object.entries(skill.hooks)) {
     if (handlers.length === 0) continue;
     settings.hooks ??= {};
     settings.hooks[event] ??= [];
-    settings.hooks[event].push({ hooks: handlers.map((h) => ({ type: "command", ...h })) });
+    settings.hooks[event].push({
+      hooks: handlers.map((h) => ({
+        type: "command",
+        ...h,
+        // A manifest declares its command against `~/.claude`, the global install. In a
+        // project install the skill lives in the repository instead, so the same command
+        // has to point there — `${CLAUDE_PROJECT_DIR}` is what Claude Code substitutes for
+        // the project root, and it is what makes the checked-in hook work for everyone who
+        // clones the repository rather than only on the machine that installed it.
+        command: projectMode
+          ? h.command.replace(/~\/\.claude\//g, "${CLAUDE_PROJECT_DIR}/.claude/")
+          : h.command,
+      })),
+    });
     added += handlers.length;
   }
   return added;
@@ -361,7 +377,7 @@ function addHooks(settings, skill) {
  * @param {string[]} log Action log.
  * @returns {void}
  */
-function installSkill(skill, claudeHome, settings, dryRun, log) {
+function installSkill(skill, claudeHome, settings, dryRun, log, projectMode) {
   const target = path.join(claudeHome, "skills", skill.name);
 
   // When this repository IS the config directory (checked out at ~/.claude, so that
@@ -380,11 +396,11 @@ function installSkill(skill, claudeHome, settings, dryRun, log) {
   }
 
   const replaced = removeHooks(settings, skill.name);
-  const added = addHooks(settings, skill);
+  const added = addHooks(settings, skill, projectMode);
 
   const what = inPlace
     ? "already in place (this repository is the config directory); files untouched"
-    : `${copied} file(s) → ~/.claude/skills/${skill.name}`;
+    : `${copied} file(s) → ${projectMode ? ".claude" : "~/.claude"}/skills/${skill.name}`;
   log.push(
     `${skill.name}: ${what}` +
       (added > 0 ? `, ${added} hook(s) registered${replaced > 0 ? ` (replaced ${replaced})` : ""}` : "")
@@ -443,7 +459,7 @@ const log = [];
 try {
   for (const skill of selected) {
     if (opts.uninstall) uninstallSkill(skill, claudeHome, settings, opts.dryRun, log);
-    else installSkill(skill, claudeHome, settings, opts.dryRun, log);
+    else installSkill(skill, claudeHome, settings, opts.dryRun, log, opts.project);
   }
   writeSettings(settingsFile, settings, opts.dryRun, log);
 } catch (err) {

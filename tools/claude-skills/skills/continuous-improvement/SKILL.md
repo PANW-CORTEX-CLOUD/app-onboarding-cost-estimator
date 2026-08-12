@@ -110,6 +110,10 @@ Full catalogue with per-angle checklists: [`REFERENCE.md`](REFERENCE.md) and
 - **Auditable.** Every decision is appended to
   `.claude/continuous-improvement/journal.jsonl` (trimmed at 1 MB, newest 500 kept) with the trigger, the mode, the angle and
   the validation line you reported.
+- **Constrainable per repository.** A project can drop
+  `.claude/continuous-improvement.local.md` beside the sentinel; it is appended to every
+  iteration and outranks this shared prompt where they conflict. Use it for a forbidden
+  operation, a different gate command, or a plan file the loop must follow.
 - **Interruptible.** Deleting the sentinel, running `loop-ctl.mjs disable`, or setting
   `CONTINUOUS_IMPROVEMENT_DISABLE=1` stops it. A user message during a loop is a normal
   turn — answer it, and it still ends with a control block.

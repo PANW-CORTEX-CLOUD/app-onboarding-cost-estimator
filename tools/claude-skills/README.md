@@ -33,8 +33,8 @@ Full documentation: [`tools/skill-installer/README.md`](tools/skill-installer/RE
 
 ```bash
 cd tools/claude-skills
-node --test 'tools/skill-installer/tests/*.test.mjs'          # 22 — installer
-node --test 'skills/continuous-improvement/tests/*.test.mjs'   # 62 — the loop skill
+node --test 'tools/skill-installer/tests/*.test.mjs'          # 25 — installer
+node --test 'skills/continuous-improvement/tests/*.test.mjs'   # 72 — the loop skill
 ```
 
 Node ≥ 18, no dependencies.

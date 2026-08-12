@@ -66,6 +66,7 @@ All under `<project>/.claude/`:
 | `continuous-improvement.active` | no (gitignored) | Activation sentinel. **Presence = armed.** Deleting it stops the loop after the current turn. |
 | `continuous-improvement.state.json` | no (gitignored) | Loop state machine: iteration, mode, used angles, bounded history. |
 | `continuous-improvement.config.json` | yes, if you want project bounds | Overrides for the caps below. |
+| `continuous-improvement.local.md` | yes | Optional per-project rules. Appended to every iteration's prompt and declared to **outrank** the shared prompt where they conflict — how a repository constrains the loop (a forbidden operation, its own gate command, a plan to follow) without forking `LOOP_PROMPT.md`. |
 | `continuous-improvement/journal.jsonl` | no (gitignored) | Decision journal, one JSON object per Stop event. Trimmed to the newest 500 entries once it passes 1 MB. |
 | `continuous-improvement/turns/*.lock` | no (gitignored) | Per-turn claim files that stop a doubly-registered hook from counting a turn twice. Pruned after 24 h. |
 
