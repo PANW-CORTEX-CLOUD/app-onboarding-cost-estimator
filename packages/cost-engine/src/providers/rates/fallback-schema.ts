@@ -195,12 +195,26 @@ export function fallbackResult(
  * Non-USD entries produce a warning (multi-currency fail closed to USD).
  */
 export function filterUsdUnitPrices(
-  raw: Record<string, { unitPrice: number; currency: string }>,
+  raw: Record<string, { unitPrice: number; currency: string | undefined }>,
 ): { unitPrices: Record<string, number>; warnings: string[] } {
   const unitPrices: Record<string, number> = {};
   const warnings: string[] = [];
   let skippedNonUsd = 0;
+  let skippedUnknownCurrency = 0;
   for (const [meterId, row] of Object.entries(raw)) {
+    // REQ-22 (T-22.1.2). A row whose currency the upstream response never stated
+    // is counted apart from one that stated a different currency: "EUR" is a
+    // price we understand and decline, an absent code is a response we did not
+    // understand at all. Both are skipped — this function is the "fail closed to
+    // USD" boundary, and it only holds if its callers hand over what the payload
+    // actually said rather than a default. Neither the Azure Retail Prices API
+    // (currencyCode on every documented item) nor the Billing Catalog omits this
+    // field in a healthy response; under proto3 omission an absent code means the
+    // empty string, never "USD".
+    if (row.currency === undefined || row.currency === "") {
+      skippedUnknownCurrency += 1;
+      continue;
+    }
     if (row.currency !== "USD") {
       skippedNonUsd += 1;
       continue;
@@ -218,6 +232,11 @@ export function filterUsdUnitPrices(
   if (skippedNonUsd > 0) {
     warnings.push(
       `skipped ${skippedNonUsd} non-USD price(s); v1 fail closed to USD`,
+    );
+  }
+  if (skippedUnknownCurrency > 0) {
+    warnings.push(
+      `skipped ${skippedUnknownCurrency} price(s) with no currency stated; v1 fail closed to USD`,
     );
   }
   return { unitPrices, warnings };

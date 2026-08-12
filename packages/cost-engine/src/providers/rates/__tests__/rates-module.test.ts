@@ -260,6 +260,28 @@ describe("package 04 — TEST parsers + offline + age", () => {
     expect(parsed.unitPrices["multi-free-meter"]).toBeCloseTo(0.25);
   });
 
+  // REQ-22 (T-22.1.2) — a response that never states a currency must not be read
+  // as dollars. Distinct from "EUR": that is a price we understand and decline.
+  it("skips a GCP price whose currency the response never stated", () => {
+    const parsed = parseGcpBillingCatalog({
+      skus: [
+        {
+          meterId: "no-currency-meter",
+          pricingInfo: [
+            {
+              pricingExpression: {
+                tieredRates: [{ unitPrice: { units: "7", nanos: 0 } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.unitPrices["no-currency-meter"]).toBeUndefined();
+    expect(parsed.warnings.join(" ")).toMatch(/no currency stated/);
+    expect(parsed.warnings.join(" ")).not.toMatch(/non-USD/);
+  });
+
   // EDGE: non-USD is still rejected after tier selection, not before it.
   it("still fails closed to USD when the charged tier is non-USD", () => {
     const parsed = parseGcpBillingCatalog({

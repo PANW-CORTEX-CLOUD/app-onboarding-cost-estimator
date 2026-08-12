@@ -132,6 +132,57 @@ const MANAGED_DISK_SNAPSHOT_ITEMS: AzureRetailItem[] = [
   },
 ];
 
+describe("azure-rates-adapter — currency must be stated, not assumed (REQ-22)", () => {
+  it("skips an item that states no currencyCode instead of pricing it as USD", () => {
+    const parsed = parseAzureRetailPrices({
+      Items: [
+        {
+          meterName: "Standard Throughput Unit",
+          retailPrice: 0.03,
+          productName: "Event Hubs",
+          tierMinimumUnits: 0,
+          // currencyCode deliberately absent: every documented Retail Prices item
+          // carries it, so its absence is a response we did not understand.
+        },
+      ],
+    });
+    expect(parsed.unitPrices["eh-standard-tu"]).toBeUndefined();
+    expect(parsed.warnings.join(" ")).toMatch(/no currency stated/);
+  });
+
+  it("still prices an item that states USD", () => {
+    const parsed = parseAzureRetailPrices({
+      Items: [
+        {
+          meterName: "Standard Throughput Unit",
+          retailPrice: 0.03,
+          currencyCode: "USD",
+          productName: "Event Hubs",
+          tierMinimumUnits: 0,
+        },
+      ],
+    });
+    expect(parsed.unitPrices["eh-standard-tu"]).toBe(0.03);
+  });
+
+  it("still declines a stated non-USD currency, and says so differently", () => {
+    const parsed = parseAzureRetailPrices({
+      Items: [
+        {
+          meterName: "Standard Throughput Unit",
+          retailPrice: 0.028,
+          currencyCode: "EUR",
+          productName: "Event Hubs",
+          tierMinimumUnits: 0,
+        },
+      ],
+    });
+    expect(parsed.unitPrices["eh-standard-tu"]).toBeUndefined();
+    expect(parsed.warnings.join(" ")).toMatch(/non-USD/);
+    expect(parsed.warnings.join(" ")).not.toMatch(/no currency stated/);
+  });
+});
+
 describe("azure-rates-adapter — SKU/tier disambiguation (EDGE regression)", () => {
   it("picks Standard (not Basic) Throughput Unit regardless of Items order", () => {
     for (const items of [EH_TU_ITEMS, [...EH_TU_ITEMS].reverse()]) {

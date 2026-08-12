@@ -95,7 +95,7 @@ export type GcpRatesAdapterOptions = {
 export function parseGcpBillingCatalog(
   body: GcpCatalogResponse,
 ): { unitPrices: Record<string, number>; warnings: string[] } {
-  const raw: Record<string, { unitPrice: number; currency: string }> = {};
+  const raw: Record<string, { unitPrice: number; currency: string | undefined }> = {};
   /** Parse-time warnings, merged with the currency filter's own below. */
   const warnings: string[] = [];
   for (const sku of body.skus ?? []) {
@@ -131,14 +131,17 @@ export function parseGcpBillingCatalog(
     // price a typical, non-bulk customer actually pays". GCP's tier 0 can be a
     // free *allowance*, so keeping it is what understates. Different rule, one
     // invariant: never let tier selection quote a customer less than they pay.
-    let chosen: { unitPrice: number; currency: string } | undefined;
+    let chosen: { unitPrice: number; currency: string | undefined } | undefined;
     let skippedFreeTiers = 0;
     for (const tierRate of tiers) {
       const money = tierRate?.unitPrice;
       if (!money) continue;
       // `units` is an int64-as-string; `nanos` are 1e-9 fractional units.
       const price = Number(money.units ?? 0) + (money.nanos ?? 0) / 1e9;
-      const candidate = { unitPrice: price, currency: money.currencyCode ?? "USD" };
+      // No `?? "USD"`: the currency the response stated is passed through as-is,
+      // so `filterUsdUnitPrices` can tell "no currency" from "a currency we do
+      // not accept" (REQ-22 T-22.1.2).
+      const candidate = { unitPrice: price, currency: money.currencyCode };
       chosen ??= candidate; // keep tier 0 as the answer for an all-free SKU
       if (price > 0) {
         if (chosen.unitPrice === 0) {
@@ -154,10 +157,6 @@ export function parseGcpBillingCatalog(
         `${meterId}: skipped a $0 introductory tier and priced flat at the first charged rate (${chosen.unitPrice}); this SKU has a free allowance that v1 does not model, so small volumes are overstated`,
       );
     }
-    // TODO(REQ-22): T-22.1.2 still open — `currencyCode ?? "USD"` above assumes a
-    // missing currency is USD, which makes `filterUsdUnitPrices` ("v1 fail closed
-    // to USD") fail open. Under proto3 omission an absent currencyCode means the
-    // empty string, not USD, so the default is wrong in both directions.
     raw[meterId] = chosen;
   }
   const filtered = filterUsdUnitPrices(raw);

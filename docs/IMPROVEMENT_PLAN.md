@@ -1161,7 +1161,7 @@ not make the parse correct.
 | ID | Task | Status |
 | --- | --- | --- |
 | T-22.1.1 | ~~Require `units`/`nanos` instead of defaulting them~~ → price from the first **charged** tier | `done` |
-| T-22.1.2 | Require `currencyCode` instead of assuming USD (**GCP + Azure**) | `todo` |
+| T-22.1.2 | Require `currencyCode` instead of assuming USD (**GCP + Azure**) | `done` |
 | T-22.2.1 | Treat a live $0 for a meter the fallback prices above zero as suspect | `todo` |
 | T-22.1.3 | End-to-end cover of the free-allowance SKU through `/v1/estimates` | `todo` |
 
@@ -1229,12 +1229,28 @@ Applies to **both** live adapters — `gcp-rates-adapter.ts` and
 each site. Under proto3 omission an absent `currencyCode` means the empty
 string, not USD, so the default is wrong in both directions.
 
-- test: a row with no `currencyCode` is skipped and counted.
-- test: `currencyCode: "EUR"` is skipped, as today.
-- edge: `currencyCode: "usd"` (lower case) — decide explicitly whether to
-  normalise or reject; today it is rejected by the strict `!== "USD"` compare.
-- e2e: an all-non-USD catalog response leaves every price at its fallback value
-  and the estimate still returns, with warnings.
+`done` (2026-08-12). Both adapters now pass the currency the response actually
+stated straight through, and `filterUsdUnitPrices` counts "no currency stated"
+separately from "a currency we decline" — an unstated code is a payload we did
+not understand, a stated `EUR` is a price we understand and refuse.
+
+Research backed the strict reading on both sides. The
+[Azure Retail Prices API](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices)
+carries `currencyCode` on every documented item and notes that non-USD rates are
+returned only "to help you estimate budget expenses" — reference figures, not
+retail prices. On GCP, proto3 omission means an absent code is the empty string,
+never USD.
+
+- test: a GCP row with no `currencyCode` is skipped, warned as "no currency
+  stated", and **not** counted as non-USD. ✅
+- test: an Azure item with no `currencyCode` is skipped the same way. ✅
+- test: an Azure item stating USD still prices. ✅
+- test: `currencyCode: "EUR"` is still declined, with the non-USD warning. ✅
+- edge: `currencyCode: "usd"` (lower case) — still rejected by the strict
+  `!== "USD"` compare. Left deliberately strict: neither API is documented to
+  vary the case, so accepting a variant would be guessing at a payload we have
+  not seen. Noted here rather than silently normalised.
+- e2e: still owed with T-22.1.3 — same missing adapter seam.
 
 ### UC-22.2 — A live zero must never silently replace a verified price
 

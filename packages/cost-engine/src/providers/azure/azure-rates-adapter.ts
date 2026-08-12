@@ -142,7 +142,7 @@ export function parseAzureRetailPrices(
   body: AzureRetailResponse,
   meterHints: Record<string, AzureMeterHint> = AZURE_METER_NAME_HINTS,
 ): { unitPrices: Record<string, number>; warnings: string[] } {
-  const raw: Record<string, { unitPrice: number; currency: string }> = {};
+  const raw: Record<string, { unitPrice: number; currency: string | undefined }> = {};
   const items = body.Items ?? [];
   for (const [meterId, hint] of Object.entries(meterHints)) {
     let candidates = items.filter(
@@ -159,14 +159,15 @@ export function parseAzureRetailPrices(
     );
     const hit = (baseTier.length > 0 ? baseTier : candidates)[0];
     if (!hit || hit.retailPrice === undefined) continue;
-    // TODO(REQ-22, T-22.1.2): `currencyCode ?? "USD"` assumes a missing currency
-    // is USD, so a response that omits the field is priced as dollars instead of
-    // being skipped. `filterUsdUnitPrices` calls itself "v1 fail closed to USD";
-    // this default is what makes it fail open. Same line exists in the GCP
-    // adapter — fix both together.
+    // No `?? "USD"` (REQ-22 T-22.1.2): every documented Retail Prices item carries
+    // `currencyCode`, so its absence is a response we did not understand, not a
+    // dollar price. Passing it through unchanged lets `filterUsdUnitPrices` fail
+    // closed — and the API's own note that non-USD rates are returned only "to
+    // help you estimate budget expenses" is why USD is the only rate this
+    // estimator will quote from.
     raw[meterId] = {
       unitPrice: hit.retailPrice,
-      currency: hit.currencyCode ?? "USD",
+      currency: hit.currencyCode,
     };
   }
   return filterUsdUnitPrices(raw);
