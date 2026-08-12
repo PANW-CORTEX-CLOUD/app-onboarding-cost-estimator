@@ -202,7 +202,7 @@ export function filterUsdUnitPrices(
   let skippedNonUsd = 0;
   let skippedUnknownCurrency = 0;
   for (const [meterId, row] of Object.entries(raw)) {
-    // REQ-22 (T-22.1.2). A row whose currency the upstream response never stated
+    // REQ-23 (T-23.1.2). A row whose currency the upstream response never stated
     // is counted apart from one that stated a different currency: "EUR" is a
     // price we understand and decline, an absent code is a response we did not
     // understand at all. Both are skipped — this function is the "fail closed to
@@ -219,7 +219,7 @@ export function filterUsdUnitPrices(
       skippedNonUsd += 1;
       continue;
     }
-    // TODO(REQ-22): this guard rejects NaN and negatives but accepts 0, and its
+    // TODO(REQ-23): this guard rejects NaN and negatives but accepts 0, and its
     // callers can produce a 0 by defaulting absent fields (see the BUG note in
     // `providers/gcp/gcp-rates-adapter.ts`). A live 0 then overwrites a verified
     // fallback price in `mergeLiveOverFallback`, so a malformed upstream response

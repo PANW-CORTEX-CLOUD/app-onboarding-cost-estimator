@@ -88,7 +88,7 @@ export type GcpRatesAdapterOptions = {
  * Volume tiers are not modelled — each meter gets one flat rate — but the tier
  * that rate is taken from is the first one that actually **charges**, not
  * literally `tieredRates[0]`, so a SKU leading with a free allowance is not
- * priced at $0 for all volume (REQ-22). Skipping a free head tier is reported
+ * priced at $0 for all volume (REQ-23). Skipping a free head tier is reported
  * in `warnings`, because it overstates small volumes.
  * @see https://cloud.google.com/billing/docs/how-to/get-pricing-information-api
  */
@@ -104,7 +104,7 @@ export function parseGcpBillingCatalog(
     const tiers = sku.pricingInfo?.[0]?.pricingExpression?.tieredRates;
     if (!tiers?.length) continue;
 
-    // REQ-22 (T-22.1.1). Reading `tieredRates[0]` unconditionally prices a SKU
+    // REQ-23 (T-23.1.1). Reading `tieredRates[0]` unconditionally prices a SKU
     // that leads with a free allowance at $0 for *all* volume — the Billing
     // Catalog expresses "first 20GB free, then $10/GB" as tier 0 at $0 with
     // `startUsageAmount: 0`, then the real rate at `startUsageAmount: 20`. So the
@@ -140,7 +140,7 @@ export function parseGcpBillingCatalog(
       const price = Number(money.units ?? 0) + (money.nanos ?? 0) / 1e9;
       // No `?? "USD"`: the currency the response stated is passed through as-is,
       // so `filterUsdUnitPrices` can tell "no currency" from "a currency we do
-      // not accept" (REQ-22 T-22.1.2).
+      // not accept" (REQ-23 T-23.1.2).
       const candidate = { unitPrice: price, currency: money.currencyCode };
       chosen ??= candidate; // keep tier 0 as the answer for an all-free SKU
       if (price > 0) {

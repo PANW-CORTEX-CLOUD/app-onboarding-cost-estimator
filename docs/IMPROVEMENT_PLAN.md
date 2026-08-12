@@ -62,7 +62,7 @@ to find one.
 | [REQ-20](#req-20--an-error-must-name-whose-fault-it-is) | An error must name whose fault it is | `done` |
 | [REQ-21](#req-21--a-customer-can-price-from-a-spreadsheet-they-fill-in) | A customer can price from a spreadsheet they fill in | `done` |
 | [REQ-22](#req-22--the-plan-file-must-accept-native-excel-xlsx) | The plan file must accept native Excel (.xlsx) | `done` |
-| [REQ-22](#req-22--a-live-rate-lookup-may-never-silently-price-a-billable-meter-at-0) | A live rate lookup may never silently price a billable meter at $0 | `todo` |
+| [REQ-23](#req-23--a-live-rate-lookup-may-never-silently-price-a-billable-meter-at-0) | A live rate lookup may never silently price a billable meter at $0 | `todo` |
 
 ---
 
@@ -1128,7 +1128,17 @@ been carried out.
 | `CAPABILITY_LABELS` | `widgets/CapabilityToggles/CapabilityToggles.tsx` | Already carries an `@deprecated` tag ("Prefer `capabilityLabel()` — kept for callers expecting short names"), but an export-usage cross-reference across all three packages + `apps/web` finds **zero callers** — the migration it was left as a bridge for is complete. It only calls `capabilityLabel()` per key, so deleting it removes a table nothing reads. | **DELETE.** High confidence — self-declared deprecated, zero references. Found in the 2026-08-11 back-compat sweep. |
 | `DeprecatedForce` query param | `openapi/openapi.yaml` (`/rates/refresh`) → generated `openapi.types.ts` | A `deprecated: true` query parameter documented as a "Deprecated no-op; use body.forceLive". The route reads `forceLive` from the JSON body; the query param does nothing, and no client (`apps/web` or tests) ever sends it. A pure backward-compat husk in the API contract with no senders to break. | **DELETE** from `openapi.yaml` and regenerate types — or keep only if an external (non-`apps/web`) client is known to still pass it, which nothing in-repo does. Found in the 2026-08-11 back-compat sweep. |
 
-## REQ-22 — A live rate lookup may never silently price a billable meter at $0  `todo`
+## REQ-23 — A live rate lookup may never silently price a billable meter at $0  `todo`
+
+> **ID collision, resolved 2026-08-12.** This requirement was first written up as
+> REQ-22 while another session was concurrently shipping a different REQ-22 ("The
+> plan file must accept native Excel"). Both followed the rule at the top of this
+> file — 21 was the highest either could see — which is exactly how the REQ-9 and
+> REQ-10 collisions happened before. Renumbered to REQ-23 here because the xlsx
+> work landed on `main` first and its id is already referenced from shipped tests.
+> The rule needs strengthening: "highest in this file" cannot be evaluated against
+> a branch that has not merged yet. Tracked as T-23.3.1.
+
 
 Found by the fail-open/silent-fallback sweep (2026-08-12). The GCP live adapter
 reconstructs a SKU's price from the Billing Catalog `Money` pair with
@@ -1160,14 +1170,15 @@ not make the parse correct.
 
 | ID | Task | Status |
 | --- | --- | --- |
-| T-22.1.1 | ~~Require `units`/`nanos` instead of defaulting them~~ → price from the first **charged** tier | `done` |
-| T-22.1.2 | Require `currencyCode` instead of assuming USD (**GCP + Azure**) | `done` |
-| T-22.2.1 | Treat a live $0 for a meter the fallback prices above zero as suspect | `todo` |
-| T-22.1.3 | End-to-end cover of the free-allowance SKU through `/v1/estimates` | `todo` |
+| T-23.1.1 | ~~Require `units`/`nanos` instead of defaulting them~~ → price from the first **charged** tier | `done` |
+| T-23.1.2 | Require `currencyCode` instead of assuming USD (**GCP + Azure**) | `done` |
+| T-23.2.1 | Treat a live $0 for a meter the fallback prices above zero as suspect | `done` |
+| T-23.1.3 | End-to-end cover of the free-allowance SKU through `/v1/estimates` | `todo` |
+| T-23.3.1 | Make requirement-ID claiming survive concurrent branches | `todo` |
 
-### Research note (2026-08-12) — this changed T-22.1.1
+### Research note (2026-08-12) — this changed T-23.1.1
 
-T-22.1.1 was written as "reject a SKU whose price fields are missing". That is
+T-23.1.1 was written as "reject a SKU whose price fields are missing". That is
 not implementable, and the edge case flagged as deciding the shape decided it
 against the original plan.
 
@@ -1201,7 +1212,7 @@ whose tiered rate is missing `units`/`nanos`, or omits `currencyCode`. The
 estimate must not quietly price that meter at $0, and must not present a
 non-USD price as USD.
 
-**T-22.1.1 — Price from the first charged tier.**  `done` (2026-08-12).
+**T-23.1.1 — Price from the first charged tier.**  `done` (2026-08-12).
 `parseGcpBillingCatalog` now walks `tieredRates` and takes the first tier with a
 non-zero unit price, warning when it skipped a free head tier. `startUsageAmount`
 was added to `GcpCatalogSku` — the type previously omitted it, so the code could
@@ -1217,15 +1228,15 @@ not see tier boundaries at all.
 - e2e: still owed — `GET /v1/estimates` with the live GCP adapter stubbed to a
   free-allowance SKU should show the charged rate and surface the warning. Not
   written yet; the live path needs `GCP_BILLING_API_KEY`, so it needs an adapter
-  seam in the API test harness. Tracked as T-22.1.3.
+  seam in the API test harness. Tracked as T-23.1.3.
 
-**T-22.1.2 — Require the currency.** Treat a missing `currencyCode` as
+**T-23.1.2 — Require the currency.** Treat a missing `currencyCode` as
 not-USD: skip the row and count it in the existing `skipped … non-USD` warning
 instead of defaulting to `"USD"`.
 
 Applies to **both** live adapters — `gcp-rates-adapter.ts` and
 `azure-rates-adapter.ts` carry the identical `hit.currencyCode ?? "USD"` line
-(found 2026-08-12 while fixing T-22.1.1). Fix them together; a marker sits at
+(found 2026-08-12 while fixing T-23.1.1). Fix them together; a marker sits at
 each site. Under proto3 omission an absent `currencyCode` means the empty
 string, not USD, so the default is wrong in both directions.
 
@@ -1250,18 +1261,62 @@ never USD.
   `!== "USD"` compare. Left deliberately strict: neither API is documented to
   vary the case, so accepting a variant would be guessing at a payload we have
   not seen. Noted here rather than silently normalised.
-- e2e: still owed with T-22.1.3 — same missing adapter seam.
+- e2e: still owed with T-23.1.3 — same missing adapter seam.
 
 ### UC-22.2 — A live zero must never silently replace a verified price
 
-**T-22.2.1 — Guard the merge.** In `mergeLiveOverFallback`, when a live price is
-`0` and the recorded fallback price is greater than `0`, keep the fallback and
-warn (same shape as the existing tier-drift warning) rather than accepting the
-zero. A meter that is genuinely free should be recorded as free in the fallback
-document by `pnpm rates:validate`, not discovered at request time.
+**T-23.2.1 — Guard the merge.**  `done` (2026-08-12). A live `0` against a
+verified non-zero price is now treated as a **failed lookup**, not as news that
+the meter became free: the verified price is kept and a warning names the meter.
 
-- test: live `0` + fallback `0.028` → fallback wins, warning names the meter.
-- test: live `0.03` + fallback `0.028` → live wins, as today.
-- edge: live `0` + fallback `0` → no warning; the document already says free.
-- e2e: an estimate whose live query returns 0 for one billable meter keeps its
-  total and carries the warning, instead of dropping the line item to $0.
+This is the last line of defence, and it is the one that does not depend on
+knowing *how* the zero was produced. T-23.1.1 and T-23.1.2 close the two parse
+paths we found; this closes the ones we have not. Any future parser bug, partial
+payload or vendor shape change that yields a spurious zero arrives here looking
+like a legitimate price, and here — uniquely — there is something to contradict
+it with: a rate the crawler verified against the vendor's own price list.
+
+The trade is one-directional and deliberate: if a vendor genuinely drops a meter
+to $0, the old higher price is quoted until someone re-runs the validator, and
+the warning says exactly that. Overcharging on paper and saying so is
+recoverable; silently zeroing a billable line is not.
+
+- test: live `0` + verified `0.0208` → verified wins, warning names the meter. ✅
+- test: live `0.0999` + verified `0.0208` → live wins and flattens the ladder, as
+  before — the guard must not swallow a real re-price. ✅
+- edge: rejecting the zero keeps the meter's **ladder** intact, because the zero
+  is discarded before the ladder decision — it must read as "not covered", not as
+  a re-price that flattens tiers for a value we just refused to trust. ✅
+- edge: live `0` + verified `0` → no warning; nothing is contradicted, and a
+  guard that cries wolf on the agreeing case gets muted by its readers. ✅
+- edge: a live meter the document never recorded is still accepted at face value,
+  including a zero — the guard works by contradiction and there is nothing to
+  contradict. Documented at the site as an absence of basis, not a judgement.
+- e2e: still owed with T-23.1.3 — same missing adapter seam.
+
+### UC-23.3 — Two sessions must not be able to claim the same requirement id
+
+The rule at the top of this file says to take the next number above the highest
+that appears **in this file**. Two sessions did exactly that on the same day and
+both produced a REQ-22, because neither branch could see the other's unmerged
+work. The rule is not weak in spirit, it is unenforceable in principle: it
+resolves an id against a file state that is not yet shared. REQ-9 and REQ-10 went
+the same way earlier, so this is now the third and fourth instance.
+
+**T-23.3.1 — Make the claim checkable rather than advisory.** Options, cheapest
+first; this needs a decision before it is worth coding:
+
+1. A `scripts/check-req-ids.mjs` gate in `pnpm test` that fails on a duplicate
+   `## REQ-n` heading or a duplicate index row. Catches the collision at the
+   merge, not months later — it does not prevent one, but nothing local can.
+2. Allocate ids from the branch name or a timestamp instead of a counter, so two
+   sessions cannot mint the same one.
+3. Keep the counter but require the claim to be pushed as its own commit before
+   the work starts, making the id visible to the other session.
+
+- test: two `## REQ-7` headings → the check fails and names both line numbers.
+- test: a clean file passes.
+- edge: an id referenced from code (`TODO(REQ-n)`) with no matching heading —
+  the dangling case, which is how a renumber goes wrong.
+- edge: the index table and the section heading disagreeing about an id's title.
+- e2e: `pnpm test` fails on a duplicate introduced in a scratch copy of the file.

@@ -132,7 +132,7 @@ const MANAGED_DISK_SNAPSHOT_ITEMS: AzureRetailItem[] = [
   },
 ];
 
-describe("azure-rates-adapter — currency must be stated, not assumed (REQ-22)", () => {
+describe("azure-rates-adapter — currency must be stated, not assumed (REQ-23)", () => {
   it("skips an item that states no currencyCode instead of pricing it as USD", () => {
     const parsed = parseAzureRetailPrices({
       Items: [

@@ -159,7 +159,7 @@ export function parseAzureRetailPrices(
     );
     const hit = (baseTier.length > 0 ? baseTier : candidates)[0];
     if (!hit || hit.retailPrice === undefined) continue;
-    // No `?? "USD"` (REQ-22 T-22.1.2): every documented Retail Prices item carries
+    // No `?? "USD"` (REQ-23 T-23.1.2): every documented Retail Prices item carries
     // `currencyCode`, so its absence is a response we did not understand, not a
     // dollar price. Passing it through unchanged lets `filterUsdUnitPrices` fail
     // closed — and the API's own note that non-USD rates are returned only "to

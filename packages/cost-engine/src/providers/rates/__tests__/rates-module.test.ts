@@ -162,7 +162,7 @@ describe("package 04 — TEST parsers + offline + age", () => {
     expect(parsed.unitPrices["pubsub-message-delivery"]).toBeCloseTo(0.04);
   });
 
-  // REQ-22 (T-22.1.1) — a SKU that leads with a free allowance must not price at
+  // REQ-23 (T-23.1.1) — a SKU that leads with a free allowance must not price at
   // $0 for all volume. The Billing Catalog expresses "first 20GB free, then
   // $10/GB" as tier 0 at $0 (startUsageAmount 0) and the real rate at tier 1.
   it("prices from the first charged tier, not a free introductory tier", () => {
@@ -260,7 +260,7 @@ describe("package 04 — TEST parsers + offline + age", () => {
     expect(parsed.unitPrices["multi-free-meter"]).toBeCloseTo(0.25);
   });
 
-  // REQ-22 (T-22.1.2) — a response that never states a currency must not be read
+  // REQ-23 (T-23.1.2) — a response that never states a currency must not be read
   // as dollars. Distinct from "EUR": that is a price we understand and decline.
   it("skips a GCP price whose currency the response never stated", () => {
     const parsed = parseGcpBillingCatalog({

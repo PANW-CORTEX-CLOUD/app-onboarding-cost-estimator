@@ -197,6 +197,53 @@ describe("ladders survive live rates — the silent-degradation fix", () => {
     expect(warnings.join(" ")).toMatch(/rates:validate/);
   });
 
+  // REQ-23 (T-23.2.1) — a live $0 against a verified non-zero price is a failed
+  // lookup, not a price drop. This is the last place holding something to
+  // contradict a spurious zero with.
+  it("EDGE: a live $0 does not overwrite a verified price, and says why", () => {
+    const { rates, warnings } = mergeLiveOverFallback(
+      "azure",
+      doc,
+      { "blob-hot-lrs-capacity": 0 },
+      "2026-08-10T00:00:00.000Z",
+    );
+    expect(rates.unitPrices["blob-hot-lrs-capacity"]).toBe(0.0208);
+    expect(warnings.join(" ")).toMatch(/live lookup returned \$0/);
+    expect(warnings.join(" ")).toMatch(/failed lookup, not a price drop/);
+    expect(warnings.join(" ")).toMatch(/rates:validate/);
+  });
+
+  it("EDGE: rejecting a suspect zero keeps the meter's ladder intact", () => {
+    // The zero is discarded before the ladder decision, so this must behave like
+    // "the live query did not cover this meter" — not like a re-price, which
+    // would flatten the ladder for a value we just refused to trust.
+    const { rates } = mergeLiveOverFallback(
+      "azure",
+      doc,
+      { "blob-hot-lrs-capacity": 0 },
+      "2026-08-10T00:00:00.000Z",
+    );
+    expect(rates.unitTiers?.["blob-hot-lrs-capacity"]).toHaveLength(3);
+  });
+
+  it("EDGE: a live $0 for a meter the document also prices at $0 is not warned about", () => {
+    // Nothing is contradicted, so there is nothing to report. Guards that cry
+    // wolf on the agreeing case get muted by the people reading them.
+    const zeroDoc = {
+      ...doc,
+      meters: doc.meters.map((m, i) => (i === 0 ? { ...m, unitPrice: 0, tiers: undefined } : m)),
+    };
+    const meterId = zeroDoc.meters[0].meterId;
+    const { rates, warnings } = mergeLiveOverFallback(
+      "azure",
+      zeroDoc,
+      { [meterId]: 0 },
+      "2026-08-10T00:00:00.000Z",
+    );
+    expect(rates.unitPrices[meterId]).toBe(0);
+    expect(warnings.join(" ")).not.toMatch(/live lookup returned/);
+  });
+
   it("EDGE: a live meter unknown to the document is honoured but gets no ladder", () => {
     const { rates } = mergeLiveOverFallback(
       "azure",

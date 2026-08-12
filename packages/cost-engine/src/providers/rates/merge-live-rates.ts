@@ -54,7 +54,29 @@ export function mergeLiveOverFallback(
   const warnings: string[] = [];
 
   for (const meter of doc.meters) {
-    const live = livePrices[meter.meterId];
+    const rawLive = livePrices[meter.meterId];
+
+    // REQ-23 (T-23.2.1). A live $0 for a meter this document prices above zero
+    // is treated as a failed lookup, not as news that the meter became free.
+    // Everything upstream that can produce a spurious zero — a partial payload,
+    // a free introductory tier, a field this parser did not understand — arrives
+    // here looking exactly like a real price, and this is the last place with
+    // something to compare it against: a rate the crawler actually verified
+    // against the vendor's own price list (`pnpm rates:validate`).
+    //
+    // The trade is deliberate and one-directional. If a vendor genuinely drops a
+    // meter to $0 we keep quoting the old, higher rate until someone re-runs the
+    // validator — the warning says exactly that. Overcharging on paper and
+    // saying so is recoverable; silently zeroing a billable line is the failure
+    // this whole requirement exists to stop.
+    const liveIsSuspectZero =
+      rawLive !== undefined && rawLive === 0 && meter.unitPrice > 0;
+    if (liveIsSuspectZero) {
+      warnings.push(
+        `${meter.meterId}: live lookup returned $0 but the verified price is ${meter.unitPrice}; keeping the verified price. A live zero is treated as a failed lookup, not a price drop — re-run \`pnpm rates:validate --write\` if this meter really is free now.`,
+      );
+    }
+    const live = liveIsSuspectZero ? undefined : rawLive;
     const price = live ?? meter.unitPrice;
     unitPrices[meter.meterId] = price;
 
@@ -73,6 +95,14 @@ export function mergeLiveOverFallback(
 
   // Live meters the document does not know about are still honoured, but they
   // have no ladder by definition.
+  //
+  // The T-23.2.1 zero-guard above deliberately does not extend here: it works by
+  // contradiction against a verified price, and a meter the document never
+  // recorded has none, so there is nothing to contradict. Accepting the zero is
+  // not a judgement that it is right — it is the absence of any basis to call it
+  // wrong. Low risk in practice because estimates price meters the capability
+  // map names, and those are the document's own; a meter no estimate reads
+  // cannot mis-price one.
   for (const [meterId, price] of Object.entries(livePrices)) {
     if (!(meterId in unitPrices)) unitPrices[meterId] = price;
   }
