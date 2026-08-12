@@ -6,10 +6,19 @@ import { PROJECTION_MAX_MONTHS } from "@cloud-connector/cost-engine";
 
 export const CloudProviderSchema = z.enum(["azure", "aws", "gcp"]);
 
+/**
+ * A cloud region slug. Longest real names are ~24 chars (e.g. GCP
+ * `northamerica-northeast2`); the 64-char cap is generous headroom that still
+ * fails closed on unbounded input — an adversarial 100k-char "region" used to be
+ * accepted (REQ-24) and fed the Gov-region substring scan and structured logs.
+ * `.min(1)` keeps the empty string out.
+ */
+export const RegionSchema = z.string().min(1).max(64);
+
 export const CreateEstimateRequestSchema = z
   .object({
     provider: CloudProviderSchema,
-    region: z.string().min(1),
+    region: RegionSchema,
     capabilities: z
       .object({
         discovery: z.boolean().optional(),
@@ -93,7 +102,7 @@ export const CreateProjectionRequestSchema = z
 export const RefreshRatesRequestSchema = z
   .object({
     provider: CloudProviderSchema,
-    region: z.string().min(1),
+    region: RegionSchema,
     forceLive: z.boolean().optional(),
   })
   .strict();

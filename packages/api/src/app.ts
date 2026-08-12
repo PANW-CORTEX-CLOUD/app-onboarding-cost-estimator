@@ -87,6 +87,91 @@ function problemJson(
   });
 }
 
+/** JSON keys that name a prototype slot rather than real data. */
+const PROTOTYPE_POLLUTION_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+/**
+ * True when `value` carries a prototype-pollution key as an own property
+ * anywhere in its structure.
+ *
+ * Why this exists: Zod v4 `.strict()` **silently drops** a `__proto__` key
+ * instead of reporting it as an unrecognized key — it is stripped before the
+ * strict check runs — so `{"volume":{"__proto__":{…}}}` passes validation while
+ * a plain unknown key (`{"volume":{"evil":1}}`) is correctly rejected with a
+ * 400. That is an inconsistency in a boundary whose entire contract is "unknown
+ * keys fail closed", and it was found by adversarial probing (REQ-24). No
+ * pollution occurs today — Zod hands clean data downstream — but the boundary
+ * must reject what it claims to reject, and this also future-proofs any caller
+ * that ever spreads a raw body before Zod runs. The dangerous key is detected
+ * by name only; its value is never dereferenced.
+ */
+function hasPrototypePollutionKey(value: unknown, depth = 0): boolean {
+  // Bound the walk: request bodies are shallow (≤3 levels); anything deeper is
+  // pathological and treated as clean rather than spending time on it.
+  if (value === null || typeof value !== "object" || depth > 8) return false;
+  if (Array.isArray(value)) {
+    return value.some((item) => hasPrototypePollutionKey(item, depth + 1));
+  }
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    if (PROTOTYPE_POLLUTION_KEYS.has(key)) return true;
+    if (
+      hasPrototypePollutionKey(
+        (value as Record<string, unknown>)[key],
+        depth + 1,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Read and JSON-parse a request body, failing closed as a 400 problem+json on
+ * either malformed JSON or a prototype-pollution key. Every JSON route funnels
+ * through here so the "invalid JSON" and "no `__proto__`" rules are enforced
+ * once, identically, for all of them (DRY — previously five hand-copied parse
+ * blocks). Returns `{ ok: true, body }` or `{ ok: false, response }` where the
+ * caller returns the pre-built problem response.
+ */
+async function readJsonBody(
+  c: Context,
+): Promise<{ ok: true; body: unknown } | { ok: false; response: Response }> {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return {
+      ok: false,
+      response: problemJson(
+        c,
+        problem(400, "Invalid JSON", "request body must be JSON"),
+        400,
+      ),
+    };
+  }
+  if (hasPrototypePollutionKey(body)) {
+    logRejection(c, "prototype-pollution key in body");
+    return {
+      ok: false,
+      response: problemJson(
+        c,
+        problem(
+          400,
+          "Validation failed",
+          "request body contains a disallowed key (__proto__, constructor, or prototype)",
+        ),
+        400,
+      ),
+    };
+  }
+  return { ok: true, body };
+}
+
 /**
  * Render a rate-source failure (`UpstreamRateError`) as a **502** problem+json.
  *
@@ -309,16 +394,9 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
         429,
       );
     }
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return problemJson(
-        c,
-        problem(400, "Invalid JSON", "request body must be JSON"),
-        400,
-      );
-    }
+    const parsedBody = await readJsonBody(c);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const parsed = RefreshRatesRequestSchema.safeParse(body);
     if (!parsed.success) {
       return problemJson(
@@ -339,16 +417,9 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
   });
 
   app.post("/v1/estimates", async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return problemJson(
-        c,
-        problem(400, "Invalid JSON", "request body must be JSON"),
-        400,
-      );
-    }
+    const parsedBody = await readJsonBody(c);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const parsed = CreateEstimateRequestSchema.safeParse(body);
     if (!parsed.success) {
       logRejection(c, `schema: ${parsed.error.message}`);
@@ -400,16 +471,9 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
    * after live rates move.
    */
   app.post("/v1/estimates/freeze", async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return problemJson(
-        c,
-        problem(400, "Invalid JSON", "request body must be JSON"),
-        400,
-      );
-    }
+    const parsedBody = await readJsonBody(c);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const parsed = FreezeEstimateRequestSchema.safeParse(body);
     if (!parsed.success) {
       return problemJson(
@@ -465,16 +529,9 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
    * reason rather than silently re-pricing at today's rates.
    */
   app.post("/v1/estimates/reload", async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return problemJson(
-        c,
-        problem(400, "Invalid JSON", "request body must be JSON"),
-        400,
-      );
-    }
+    const parsedBody = await readJsonBody(c);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const parsed = ReloadFrozenEstimateRequestSchema.safeParse(body);
     if (!parsed.success) {
       return problemJson(
@@ -502,16 +559,9 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
   });
 
   app.post("/v1/projections", async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return problemJson(
-        c,
-        problem(400, "Invalid JSON", "request body must be JSON"),
-        400,
-      );
-    }
+    const parsedBody = await readJsonBody(c);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const parsed = CreateProjectionRequestSchema.safeParse(body);
     if (!parsed.success) {
       return problemJson(

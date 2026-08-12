@@ -291,6 +291,7 @@ components:
         region:
           type: string
           minLength: 1
+          maxLength: 64
         forceLive:
           type: boolean
           default: true
@@ -407,6 +408,7 @@ components:
         region:
           type: string
           minLength: 1
+          maxLength: 64
         capabilities:
           $ref: "#/components/schemas/EstimateCapabilities"
         volume:
@@ -511,6 +513,7 @@ components:
         region:
           type: string
           minLength: 1
+          maxLength: 64
         capabilities:
           $ref: "#/components/schemas/EstimateCapabilities"
         volume:

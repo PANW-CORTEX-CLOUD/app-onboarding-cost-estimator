@@ -997,6 +997,65 @@ carefully and isolating it*, not by declining the feature.
 
 ---
 
+## REQ-24 — The request boundary must reject what it claims to reject  `done`
+
+A "run the app and go for bug hunt" pass drove the live API with hostile
+payloads. Three defects surfaced — each a *loose-validation* / *silent* pattern
+of exactly the kind this plan keeps sweeping out. None was exploitable today, but
+each let the boundary behave differently from how it advertises itself, which is
+how the exploitable version arrives later.
+
+### UC-24.1 — A body carrying a prototype-slot key fails closed, like any other unknown key
+
+- **T-24.1.1** `done` **`__proto__` slipped past `.strict()`.** A plain unknown
+  key (`{"volume":{"evil":1}}`) is correctly rejected 400, but
+  `{"volume":{"__proto__":{…}}}` returned **200**: Zod v4 `.strict()` *drops*
+  `__proto__` before the unrecognized-key check runs, so the "unknown keys fail
+  closed" contract had a hole for the three prototype-slot names. No pollution
+  occurred (Zod hands clean data downstream), but a boundary must reject what it
+  says it rejects. Fix: a shared `readJsonBody(c)` helper — now the single parse
+  path for all five JSON routes (DRY; five hand-copied parse blocks collapsed to
+  one) — walks the parsed body and returns a 400 problem+json if `__proto__`,
+  `constructor`, or `prototype` appears as an own key at any depth. The dangerous
+  key is detected by name only, never dereferenced.
+  *Tests* (`adversarial-validation.test.ts`): nested `__proto__` → 400
+  problem+json and `Object.prototype` stays clean; top-level `constructor` → 400;
+  the guard also covers `/v1/projections`; a legitimate payload still 200.
+
+### UC-24.2 — Unbounded strings do not reach the engine or the logs
+
+- **T-24.2.1** `done` **`region` had no upper bound.** `z.string().min(1)`
+  accepted a 100k-char (or emoji) region, which then fed the Gov-region substring
+  scan and structured logs. Added `RegionSchema = z.string().min(1).max(64)`
+  (longest real slug ~24 chars) and mirrored `maxLength: 64` into the three
+  request bodies in the OpenAPI SSOT (drift stamp regenerated). *Tests*: a
+  100k-char region → 400 problem+json; `northamerica-northeast2` still 200.
+
+### UC-24.3 — An empty selection is not presented as an authoritative $0
+
+- **T-24.3.1** `done` **`capabilities:{}` returned `expected:0, confidence:High,
+  warnings:[]`** — a priced-looking $0 for a request that asked to price nothing.
+  The plan-file importer already refuses a zero-capability file, but the raw API
+  and share-link paths did not. Fix: `createEstimate` pushes an explicit warning
+  when `lineItems` is empty, so a real-but-empty $0 always carries its own
+  explanation. Status stays `High` (the $0 *is* certain); the honesty fix is the
+  warning, not a fake downgrade. *Tests*: engine-level (`create-estimate-mvp`) and
+  API-level (`adversarial-validation`) both assert the warning fires.
+
+### Findings triaged as **not** bugs (recorded so they are not re-chased)
+
+- **Gov region returns a priced 200 for audit logs.** Correct: Gov fail-close is
+  *capability-specific* (Azure DSPM throws; egress/ADS warn), not a blanket region
+  ban — Event Hubs pricing is region-independent. Verified Azure DSPM in a Gov
+  region still fails closed 400.
+- **`annualGrowthPercent: 1e308` → 200 with huge finite output.** Garbage-in,
+  garbage-out; no `NaN`/`Infinity` leak. `1e309` (Infinity) *is* rejected by Zod.
+  Negative growth is floored to 0 by design (documented).
+- **`accountCount: 1e12` → 200.** Finite, non-negative; a wild-but-valid volume,
+  not a defect.
+
+---
+
 ## Sweep record
 
 A standing sweep for silent fallbacks, drift, loose validation and back-compat

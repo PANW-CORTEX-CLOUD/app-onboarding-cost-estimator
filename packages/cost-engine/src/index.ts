@@ -201,6 +201,7 @@ export {
   GCP_FALLBACK_PRICES_PATH,
   parseGcpBillingCatalog,
 } from "./providers/gcp/gcp-rates-adapter.ts";
+export type { GcpCatalogResponse } from "./providers/gcp/gcp-rates-adapter.ts";
 
 export {
   estimateAzureAuditStream,

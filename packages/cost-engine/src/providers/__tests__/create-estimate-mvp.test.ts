@@ -43,6 +43,22 @@ describe("package 19 — createEstimate MVP bands", () => {
     expect(r.warnings.some((w) => /discovery/i.test(w))).toBe(true);
   });
 
+  it("REQ-24: an empty capability set warns instead of a silent authoritative $0", async () => {
+    const r = await createEstimate({
+      provider: "azure",
+      region: "eastus",
+      capabilities: {},
+      volume: { accountCount: 10 },
+      ratesOptions: OFFLINE_RATES,
+      now: NOW,
+    });
+    expect(r.lineItems).toEqual([]);
+    expect(r.totals.expected).toBe(0);
+    // The $0 is real, but it must not go out unexplained — an empty selection
+    // used to return `confidence:High, warnings:[]`, reading as a priced answer.
+    expect(r.warnings.some((w) => /no billable capability/i.test(w))).toBe(true);
+  });
+
   it("Low-confidence (DSPM) exposes low/expected/high bands", async () => {
     const r = await createEstimate({
       provider: "azure",

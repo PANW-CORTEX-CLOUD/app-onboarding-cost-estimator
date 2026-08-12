@@ -507,6 +507,18 @@ export async function createEstimate(
   // Honesty: Azure TF bills audit only; AWS/GCP have no connector TF inventory.
   appendTfHonestyWarnings(provider, caps, warnings);
 
+  // Honesty: an estimate that priced nothing is a $0 total. Emit an explicit
+  // warning so an empty selection — no capability enabled, or every enabled one
+  // gated out / meter-less — is never presented as an authoritative priced $0.
+  // The plan-file importer already refuses a file with zero capabilities; this
+  // covers the raw API and share-link paths, which do not. (REQ-24: adversarial
+  // `capabilities:{}` returned `expected:0, confidence:High, warnings:[]`.)
+  if (lineItems.length === 0) {
+    warnings.push(
+      "no billable capability produced a line item — total is $0; enable at least one capability with its sizing inputs to get a cost",
+    );
+  }
+
   // Rate provenance: stamp every line with when its price was last seen in the
   // vendor's own price list, and refuse to call a line High confidence when the
   // number behind it is not vendor-backed.
