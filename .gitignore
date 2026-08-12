@@ -12,3 +12,9 @@ apps/*/node_modules/
 **/playwright-report/
 **/coverage/
 **/.vite/
+
+# continuous-improvement loop runtime state (see tools/claude-skills/)
+.claude/continuous-improvement.active
+.claude/continuous-improvement.state.json
+.claude/continuous-improvement.config.json
+.claude/continuous-improvement/
