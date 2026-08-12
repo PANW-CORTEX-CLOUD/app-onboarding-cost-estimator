@@ -59,6 +59,7 @@ to find one.
 | [REQ-17](#req-17--an-unexpected-error-must-not-leak-its-raw-message-to-the-client) | An unexpected error must not leak its raw message to the client | `done` |
 | [REQ-18](#req-18--a-persisted-blob-must-not-be-trusted-just-because-it-parses) | A persisted blob must not be trusted just because it parses | `done` |
 | [REQ-19](#req-19--a-request-field-must-not-be-inert) | A request field must not be inert | `done` |
+| [REQ-20](#req-20--an-error-must-name-whose-fault-it-is) | An error must name whose fault it is | `done` |
 
 ---
 
@@ -727,11 +728,10 @@ made one test flaky.
   *Tests* (`app-offline-seam.test.ts`): an injected adapter that throws on
   `GET /v1/rates` surfaces as a 500 with `Content-Type: application/problem+json`
   and a parseable body — a response, not a hang.
-  *Follow-on TODO (in code)*: `TODO(REQ-15, error-taxonomy)` at `onError` — a
-  rate-feed outage is really an upstream failure (502/503), and `/v1/estimates`'s
-  own catch maps an adapter throw to 400 alongside genuine validation refusals.
-  Typed engine error classes (UpstreamRateError vs ValidationError) would let both
-  sites pick the honest status. Out of scope for the seam itself.
+  *Follow-on (now done, REQ-20)*: the `TODO(REQ-15, error-taxonomy)` at `onError`
+  is resolved — `getRates` throws a typed `UpstreamRateError` for a broken
+  adapter or corrupt price, and both `onError` and the `/v1/estimates` catch map
+  it to 502 while validation refusals stay 400.
 
 ## REQ-16 — Error responses must carry the media type the contract declares  `done`
 
@@ -786,11 +786,12 @@ Found by a read-only sweep of the just-merged global error net.
   can fix (echo the domain reason), a 5xx tells them nothing they can act on, so
   echoing its raw text only leaks. Give 5xx a correlation id and keep the cause
   in the logs.
-  *Follow-on (existing `TODO(REQ-15, error-taxonomy)`)*: `/v1/estimates`'s own
-  catch maps a rate-adapter throw to a 400 with the raw message; once typed
-  engine error classes separate an upstream outage from a validation refusal,
-  the same "generic for upstream, specific for client-actionable" split should
-  apply there too.
+  *Follow-on (now done, REQ-20)*: `/v1/estimates`'s own catch used to map a
+  rate-adapter throw to a 400 with the raw message; it now recognises
+  `UpstreamRateError` and returns a generic 502 (upstream) while keeping the
+  specific 400 for client-actionable validation refusals — the same
+  "generic for upstream, specific for client-actionable" split this note asked
+  for.
 
 ## REQ-18 — A persisted blob must not be trusted just because it parses  `done`
 
@@ -877,6 +878,44 @@ same meter independently, so laddering each in isolation would understate the
 blended rate; a flat first-tier price is the conservative choice for a
 Low-confidence line, stated rather than silently applied.
 
+## REQ-20 — An error must name whose fault it is  `done`
+
+`getRates` fails closed: it throws when a rate adapter itself throws (the feed
+is down) or returns a corrupt price (non-finite / negative — never invent $0).
+Both are **rate-source** failures — the price data, live or bundled, not
+anything in the caller's request. But `/v1/estimates` caught *every* throw and
+returned `400 "Validation failed"` with the raw message, and the global
+`onError` net returned a flat `500`. So a corrupt price or a feed outage was
+reported to the client as *their* bad input (400) or an internal bug (500),
+neither of which is true. A `TODO(REQ-15, error-taxonomy)` had named the gap.
+
+This is the same honesty thesis as the rest of the plan, applied to the error
+channel: a status code is a claim about who is responsible, and 400-for-
+everything is a false claim.
+
+### UC-20.1 — A client can tell "fix your request" from "the pricing feed failed, retry"
+
+- **T-20.1.1** `done` Added a typed `UpstreamRateError` (`core/errors.ts`),
+  thrown by `getRates` for a wrapped adapter failure and for a corrupt source
+  price. The API maps it to **502** (bad upstream dependency) in both the
+  `/v1/estimates` catch and the global `onError` net, via one shared helper;
+  genuine validation refusals still return **400** with their client-actionable
+  reason. The 502 detail is generic and carries the request id (`instance` +
+  `X-Request-Id`) — the raw cause is logged, never echoed (CWE-209, same rule as
+  REQ-17). `openapi.yaml` now declares `502` on the four rate-resolving routes
+  (`/rates`, `/rates/refresh`, `/estimates`, `/estimates/freeze`); types
+  regenerated, drift + spectral green. Retired the `TODO(REQ-15)`.
+  *Tests*: `rates-module.test.ts` (engine) — a throwing adapter and a
+  corrupt-price adapter each reject with `UpstreamRateError`, and a normal
+  fallback does **not**; `app-offline-seam.test.ts` (API) — `GET /v1/rates`
+  with a throwing adapter → 502 (not 500) with no leaked message; a
+  corrupt-price adapter on `POST /v1/estimates` → 502 (not 400); a real
+  validation refusal (ADS with no drivers) → still 400.
+  *Learning*: fail-closed is only half the job — *how* you fail is also a
+  claim. Throwing is honest; throwing a type that lets the boundary say 502 vs
+  400 is honest about whose fault it is. A catch-all `400` quietly blames the
+  user for the server's broken data.
+
 ---
 
 ## Sweep record
@@ -906,6 +945,7 @@ looked".
 | 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
 | 2026-08-11 | "Blocked on an external API key" taken at face value (REQ-2/REQ-4) | **Challenged and dissolved.** Two GCP meters sat `unverified` with a `blockedReason` that amounted to "needs the Cloud Billing Catalog API key". Researching public sources showed: (a) the old keyless `pricelist.json` feed is decommissioned (404), so no keyless *machine* feed exists; but (b) the authoritative source is the official Google pricing doc itself, which the ledger already models as `method: "official-doc"`. Re-confirmed both values against the official doc + multiple independent references ($0.05/GB-month snapshot; $0.067/hr e2-standard-2) and moved them to `verified`. Every billable meter on all three clouds is now vendor-backed. *Rule*: "we need an API key" is a claim to verify, not accept — the authoritative source may be a document, not an endpoint, and a scheduled human re-read is real coverage. |
 | 2026-08-11 | Web-layer sweep: unchecked casts on parsed/persisted data | **Mostly clean; one fixed (REQ-18).** Audited every `JSON.parse(...) as T` and `Number(...)` in `apps/web`. The share-state restore path already re-validates through `validateShareState` (safe), the calibration cast is a post-guard union-narrowing (safe), and `billingCsv` guards `Number.isFinite` (safe). The exception: `loadEstimateCache` presence-checked but did not structurally validate the cached estimate before rendering it — a **persistence-drift** hole across app versions (both sessions found it independently; fixed as REQ-18 via `isEstimateResponseShape`, fail-closed to a cache miss). *Rule*: persisted state is external input on the next app version even when it is self-authored on this one — validate it as strictly as any wire input. |
+| 2026-08-12 | Error status that misattributes blame (catch-all 400/500) | **Found and fixed (REQ-20).** A rate-source failure (adapter throw, or a corrupt non-finite price `getRates` fails closed on) was reported as `400 "Validation failed"` by `/v1/estimates` and a flat `500` by the `onError` net — telling the client it was their bad input, or an internal bug, when it was neither. Added a typed `UpstreamRateError`; both sites now return 502 (generic detail + request id, no leak) while real validation refusals stay 400. *Rule*: a status code is a claim about who is responsible — a catch-all 400 blames the caller for the server's broken data. |
 | 2026-08-12 | Inert request field (a knob wired to nothing) | **Found and fixed (REQ-19).** `avgImageGB` and a `crossRegionPull` flag existed all the way to the registry estimator, which fully modeled cross-region pull, but `create-estimate.ts` hard-wired `crossRegionPull: false` — so the path was unreachable and `avgImageGB` changed no total. A standing `TODO(REQ-2.x)` had named it. Threaded `crossRegionPull` through the OpenAPI/Zod contract, engine and UI; defaulted `avgImageGB` (tracked assumption) only when cross-region is on, so it is neither a silent $0 nor a reported-but-unused assumption. *Rule*: a field that never moves an output is a lie about what the tool models — wire it or delete it, and default it only where it is load-bearing. |
 | 2026-08-11 | Gate suite exists but nothing enforces it (the "unenforced check" anti-pattern, one layer up) | **Found and fixed.** The repo carries a large offline gate suite behind `pnpm test` (boundary / circular-dep / OpenAPI-drift / TF-honesty-drift / fallback-age / price-ledger checks + 4 Vitest projects + Playwright e2e), and three docs (`ARCHITECTURE.md`, `NEXT_STEPS.md`, this plan) already referred to "CI" as the thing enforcing them — but there was **no `.github/workflows/` at all**, so the gates only ran when a developer chose to run them locally. That is exactly the failure mode the gate scripts themselves guard against (a check that exits 0 without running looks identical to a passing check), promoted one level: an entire suite that runs nowhere by default. Added `.github/workflows/ci.yml` running the same `pnpm test` (plus a `tsc --noEmit` typecheck) on every push to `main` and every PR — pnpm/Node pinned from the `packageManager` field + `engines`, `--frozen-lockfile` so a stale lockfile fails loudly, Chromium installed for e2e. Corrected the stale "CI drift check later" note in `ARCHITECTURE.md`. *Rule*: a gate that is not wired into an automatic trigger is documentation, not enforcement — "we have CI" is a claim to verify against `.github/workflows`, not assume from the presence of gate scripts. |
 

@@ -370,6 +370,8 @@ export {
 } from "./providers/rates/get-rates.ts";
 export type { RatesCache, GetRatesOptions } from "./providers/rates/get-rates.ts";
 
+export { UpstreamRateError } from "./core/errors.ts";
+
 export {
   FORMULA_CHECKS,
   LIVE_FALLBACK_DRIFT_WARN_RATIO,

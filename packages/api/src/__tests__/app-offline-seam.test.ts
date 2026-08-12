@@ -127,7 +127,7 @@ describe("REQ-15 — pricing routes drivable offline via injected rates seam", (
   });
 });
 
-describe("REQ-15 EDGE — an adapter that throws surfaces as a 5xx problem+json, not a hang", () => {
+describe("REQ-15/REQ-20 EDGE — a rate-source failure surfaces as a 502 problem+json, not a hang or a 400", () => {
   /** An adapter whose live/fallback path both fail — models a rate-feed outage. */
   const explodingAdapter: RatesAdapter = {
     provider: "azure",
@@ -135,27 +135,86 @@ describe("REQ-15 EDGE — an adapter that throws surfaces as a 5xx problem+json,
       throw new Error("simulated rate-feed outage");
     },
   };
+  /** An adapter that "succeeds" but returns a corrupt (non-finite) unit price. */
+  const corruptPriceAdapter: RatesAdapter = {
+    provider: "azure",
+    async getRates(region: string) {
+      return {
+        rates: {
+          provider: "azure" as const,
+          region,
+          currency: "USD" as const,
+          unitPrices: { "eh-standard-tu": Number.POSITIVE_INFINITY },
+          capturedAt: NOW.toISOString(),
+        },
+        ratesSource: "live" as const,
+        ageDays: 0,
+        warnings: [],
+      };
+    },
+  };
 
-  it("GET /v1/rates with a throwing adapter → 500 problem+json, no raw error leaked", async () => {
+  it("GET /v1/rates with a throwing adapter → 502 problem+json (upstream, not internal), no raw error leaked", async () => {
     const app = createApp({
       ratesOptions: { adapters: { azure: explodingAdapter }, cache: createRatesCache() },
     });
     const res = await app.request("/v1/rates?provider=azure&region=eastus");
-    // The route has no local try/catch; the global onError net catches the
-    // throw and renders it, so the client gets a parseable response, not a hang.
-    expect(res.status).toBe(500);
+    // getRates wraps the adapter throw as UpstreamRateError; the onError net
+    // renders it as a 502 — an honest "the pricing feed failed", not a 500 that
+    // calls it an internal bug, and not a hang.
+    expect(res.status).toBe(502);
     expect(res.headers.get("Content-Type")).toMatch(/application\/problem\+json/);
     const body = await res.json();
-    expect(body.status).toBe(500);
-    // The raw internal error message must NOT reach the client (CWE-209): an
-    // unexpected throw can carry upstream/internal detail. The detail is a
-    // stable, generic string; the real cause is in the server logs, correlated
-    // by the request id echoed in `instance` and the X-Request-Id header.
+    expect(body.status).toBe(502);
+    // The raw internal error message must NOT reach the client (CWE-209).
     expect(body.detail).not.toMatch(/simulated rate-feed outage/);
-    expect(body.detail).toMatch(/unexpected internal error/i);
+    expect(body.detail).toMatch(/not a problem with your request/i);
     expect(body.instance).toBeTruthy();
     expect(res.headers.get("X-Request-Id")).toBeTruthy();
     expect(body.instance).toBe(res.headers.get("X-Request-Id"));
+  });
+
+  it("POST /v1/estimates with a corrupt-price adapter → 502, not a 400 that blames the request", async () => {
+    const app = createApp({
+      ratesOptions: { adapters: { azure: corruptPriceAdapter }, cache: createRatesCache() },
+    });
+    const res = await app.request("/v1/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "azure",
+        region: "eastus",
+        capabilities: { auditLogs: true },
+        volume: { accountCount: 10, ingressGBPerDay: 10, peakMBps: 1, peakEventsPerSec: 1000 },
+      }),
+    });
+    // A corrupt price is upstream/server data, never the caller's input — the
+    // estimates catch must return 502, not the old catch-all 400.
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.status).toBe(502);
+    expect(body.detail).not.toMatch(/eh-standard-tu/); // no raw meter detail leaked
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
+  });
+
+  it("POST /v1/estimates with a genuine validation refusal is still a 400 (client-actionable)", async () => {
+    const app = createApp({ ratesOptions: offline() });
+    const res = await app.request("/v1/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // ADS enabled but its required sizing drivers omitted → engine refuses.
+      body: JSON.stringify({
+        provider: "azure",
+        region: "eastus",
+        capabilities: { adsCloud: true },
+        volume: {},
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.status).toBe(400);
+    // A 4xx names the domain reason the caller can act on.
+    expect(body.detail).toBeTruthy();
   });
 });
 
