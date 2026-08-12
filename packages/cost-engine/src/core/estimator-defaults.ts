@@ -53,6 +53,25 @@ export const DEFAULT_DSPM_PCT_SCANNED = 10;
  */
 export const DEFAULT_AVG_PACKAGE_GB = 0.01;
 
+/**
+ * ASSUMPTION — average compressed container-image size, in GB.
+ *
+ * Only load-bearing for **cross-region** registry scanning: the estimator
+ * bills `imageCount × avgImageGB × scansPerMonth × egressRate` when a scan
+ * pulls images across a region boundary, and $0 when it does not (same-region
+ * pulls incur no egress — @see providers/registry-serverless/estimate-scan-core.ts).
+ * So this default is applied — and reported as an assumption — only when
+ * `crossRegionPull` is set; when it is not, `avgImageGB` changes no total and
+ * is left untouched rather than defaulted, so the estimate never claims an
+ * assumption it did not actually use.
+ *
+ * Like `avgObjectSizeMB`, there is no vendor figure — image size is a property
+ * of the customer's registry, not the cloud — so 1 GB is a deliberately
+ * conservative middle (real compressed images span ~0.05 GB for a slim base to
+ * several GB for a full ML runtime) that the operator is expected to override.
+ */
+export const DEFAULT_AVG_IMAGE_GB = 1;
+
 /** CONVENTION — hours per day, for day↔month conversions. */
 export const HOURS_PER_DAY = 24;
 

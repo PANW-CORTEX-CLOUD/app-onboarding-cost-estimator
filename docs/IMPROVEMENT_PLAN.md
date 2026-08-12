@@ -58,6 +58,7 @@ to find one.
 | [REQ-16](#req-16--error-responses-must-carry-the-media-type-the-contract-declares) | Error responses must carry the media type the contract declares | `done` |
 | [REQ-17](#req-17--an-unexpected-error-must-not-leak-its-raw-message-to-the-client) | An unexpected error must not leak its raw message to the client | `done` |
 | [REQ-18](#req-18--a-persisted-blob-must-not-be-trusted-just-because-it-parses) | A persisted blob must not be trusted just because it parses | `done` |
+| [REQ-19](#req-19--a-request-field-must-not-be-inert) | A request field must not be inert | `done` |
 
 ---
 
@@ -366,8 +367,10 @@ weak. *(Found by probing the guard against reality, not from the spec.)*
 default (`scansPerMonth`, `pctScanned`, `avgObjectSizeMB`, …) were never listed
 as drivers, so no legitimate partial input is newly rejected. `registry` lists
 `imageCount` only: its second field `avgImageGB` feeds the cross-region pull
-path, and `crossRegionPull` is hard-wired `false`, so requiring it would force a
-field that changes no total (TODO at the call site in `create-estimate.ts`).
+path, which is now reachable from the request (REQ-19). `avgImageGB` still is
+not a *required* driver, because it carries a tracked default applied exactly
+when `crossRegionPull` is on — a required driver has no honest default; this one
+does.
 
 *Test cases.* unit: ADS with one driver reports the **specific** missing field;
 both present → sized; **edge** an explicit `0` on one driver does not excuse an
@@ -817,6 +820,63 @@ one remaining fail-**open** in an otherwise fail-closed codebase.
   Validate persisted data against its current shape at the trust boundary, the
   same way the API validates an incoming request body.
 
+## REQ-19 — A request field must not be inert  `done`
+
+The registry scan estimator has always modeled cross-region image pull
+(`amount = crossRegionPull ? imageCount × avgImageGB × scansPerMonth × egressRate : 0`,
+billed on the real, verified provider egress meter), and both `avgImageGB` and
+a `crossRegionPull` flag existed all the way down to the estimator. But
+`create-estimate.ts` hard-wired `crossRegionPull: false`, so the whole
+cross-region path was unreachable and `avgImageGB` was an **inert request
+field** — a knob wired to nothing. A `TODO(REQ-2.x)` at the call site named the
+two honest exits: thread `crossRegionPull` through the request so `avgImageGB`
+becomes live, or delete `avgImageGB` as a false input. The tested engine
+capability made the first exit the one that adds value.
+
+### UC-19.1 — An operator whose scanner runs in a different region than the registry gets a defensible pull cost
+
+Registry pulls are free within a region and pay egress across one. The operator
+turns on cross-region pull and the estimate bills the image bytes the scanner
+actually transfers.
+
+- **T-19.1.1** `done` Threaded `crossRegionPull` through the contract
+  (`openapi.yaml` `EstimateVolume` + the Zod `volume` schema), the engine (read
+  `vol.crossRegionPull`, pass it to the estimator), and the web UI (a
+  `crossRegionPull` state flag mirrored through the same request-builders,
+  autorun key and CSV round-trip as `overrideStreamMetrics`, plus a checkbox in
+  `CapabilityVolumeFields`). Retired the `TODO(REQ-2.x)`.
+  *Tests*: `registry-cross-region.test.ts` (engine) — cross-region bills
+  `imageCount × avgImageGB × scansPerMonth × rate`; same-region is $0;
+  `app-offline-seam.test.ts` (API) — a `POST /v1/estimates` with
+  `crossRegionPull:true` returns a billed registry line and the omitted-field
+  case reports the `avgImageGB` assumption; **e2e** — the UI toggle puts the
+  egress meter in the breakdown (audit off, so it can only be the registry pull).
+
+- **T-19.1.2** `done` `avgImageGB` is defaulted **only when it matters**. When
+  `crossRegionPull` is on and `avgImageGB` is omitted, the engine substitutes a
+  tracked `assumption` default (`DEFAULT_AVG_IMAGE_GB = 1`, reported in
+  `appliedDefaults`), so an enabled cross-region line can never silently price
+  at $0 — the REQ-6.2 multiplicand trap. When `crossRegionPull` is off,
+  `avgImageGB` changes no total, so it is left untouched and **not** reported,
+  because surfacing an assumption the estimate never used would be dishonest.
+  It is therefore not a *required* driver in `capability-drivers.ts` (a required
+  driver has no honest default; this one does).
+  *Tests* (`registry-cross-region.test.ts`): **edge** cross-region + omitted
+  `avgImageGB` → default applied and reported; **edge** same-region → not
+  defaulted, not reported; **edge** cross-region + explicit `avgImageGB=0` →
+  $0 and no default (an explicit zero is a decision, not an omission).
+  *Learning*: an input that never changes an output is not a harmless spare — it
+  is a lie about what the tool models. Wire it to something or delete it; and
+  when you wire it, default it only in the state where it is load-bearing, or
+  the "assumptions applied" list starts reporting fiction.
+
+*Honesty note carried in code (REQ-3)*: the egress meter can carry a graduated
+tier ladder, but registry pull volume is priced at its flat first-tier rate and
+says so in an estimate note. Registry pull and the egress capability bill the
+same meter independently, so laddering each in isolation would understate the
+blended rate; a flat first-tier price is the conservative choice for a
+Low-confidence line, stated rather than silently applied.
+
 ---
 
 ## Sweep record
@@ -833,7 +893,7 @@ looked".
 | 2026-08-11 | Absent coerced to zero — multiplicand grain | **Found and fixed** (REQ-6.2). The REQ-6 guard accepted "at least one" driver, but ADS's two drivers are multiplicands: supplying only one let the other `?? 0` produce a silent $0. Guard now requires every listed driver; probed against the real engine to confirm the gap and the fix. |
 | 2026-08-10 | Swallowed errors (`catch {}`) | Checked all 7. All legitimate: each converts a parse failure into an explicit typed error or Problem response. No change. |
 | 2026-08-10 | `as any` / unchecked casts | None in engine, API or web. |
-| 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. **Updated 2026-08-11:** the ADS `?? 0`s are now fully guard-protected (REQ-6.2 requires both drivers). One inert case remains and is flagged with a TODO: `avgImageGB ?? 0` in the registry block feeds only the disabled cross-region pull path, so it changes no total. |
+| 2026-08-10 | Remaining `?? 0` | Only where a guard has already rejected the absent case (documented at the site), or where 0 is the correct reading of an absent protobuf field in the GCP catalog parser. **Updated 2026-08-11:** the ADS `?? 0`s are now fully guard-protected (REQ-6.2 requires both drivers). One inert case remained and was flagged with a TODO: `avgImageGB ?? 0` in the registry block fed only the then-disabled cross-region pull path. **Resolved 2026-08-12 (REQ-19):** `crossRegionPull` now threads through the request, so `avgImageGB` is load-bearing when it is set and carries a tracked default when it is; the field is no longer inert and the TODO is retired. |
 | 2026-08-10 | Unexplained magic numbers | Moved to `estimator-defaults.ts` with provenance per constant (REQ-5). |
 | 2026-08-11 | Tests that pin a fixture date but not the clock | **Found and fixed — third instance of this class.** `rates-module.test.ts` pinned `now` on the *adapters* but not on `getRates`, which stamps `ageDays` with its own clock. The assertion compared a wall-clock `ageDays` against a `NOW`-derived one; they agreed only while the real date shared a day with the fixture's `capturedAt`, then started failing the first run after midnight UTC. Confirmed pre-existing by stashing all in-flight work and reproducing on clean `HEAD`. The sibling `price-freshness.test.ts` already pinned `now` at every call site, so the fix matched an existing pattern rather than inventing one. Swept the remaining `getRates`/`createEstimate` test call sites: no others unpinned. |
 | 2026-08-11 | Unit tests that reach the live network for rates | **Found and fixed.** `create-estimate-mvp.test.ts` (all 5 `createEstimate` calls) and `tf-audit-reconciliation.test.ts` (the discovery-only case) had no offline rate seam, so each fell through to a live `getRates` fetch. The discovery-only assertion — which does no pricing math at all — timed out at 5s under full-suite load, presenting as a failure in unrelated in-flight work. Threaded the established `OFFLINE_RATES` seam (forceFallback adapters + fresh cache + pinned `now`) through both; test time dropped from 5.4s-with-timeout to ~35ms and is now deterministic. Swept every `createEstimate`-calling test: the remaining apparent gaps (`price-validation`, `capability-drivers`) spread a shared already-seamed `inputs`/`base` object, so they were never live. *Rule*: a unit test must never depend on `getRates` reaching the network — inject `ratesOptions` with `forceFallback` adapters, even when the assertion is purely structural, because a $0/no-op path still makes the fetch. |
@@ -846,6 +906,7 @@ looked".
 | 2026-08-11 | Response helper that lies about its own media type | **Found and fixed (REQ-15).** `problemJson` set `Content-Type: application/problem+json` then called `c.json()`, which hard-sets `application/json` and silently overrode it, so every 400/429 error response shipped the wrong RFC 7807 media type. Invisible because no test asserted the content-type — the first assertion (the REQ-15 onError test) caught it immediately. Switched to `c.body(JSON.stringify(body), status, { … })`; regression-locked on the 400/429/500 paths. *Rule*: `c.json()` owns the content-type — a custom media type must go through `c.body()`, and a header helper deserves at least one test that reads the header it sets. |
 | 2026-08-11 | "Blocked on an external API key" taken at face value (REQ-2/REQ-4) | **Challenged and dissolved.** Two GCP meters sat `unverified` with a `blockedReason` that amounted to "needs the Cloud Billing Catalog API key". Researching public sources showed: (a) the old keyless `pricelist.json` feed is decommissioned (404), so no keyless *machine* feed exists; but (b) the authoritative source is the official Google pricing doc itself, which the ledger already models as `method: "official-doc"`. Re-confirmed both values against the official doc + multiple independent references ($0.05/GB-month snapshot; $0.067/hr e2-standard-2) and moved them to `verified`. Every billable meter on all three clouds is now vendor-backed. *Rule*: "we need an API key" is a claim to verify, not accept — the authoritative source may be a document, not an endpoint, and a scheduled human re-read is real coverage. |
 | 2026-08-11 | Web-layer sweep: unchecked casts on parsed/persisted data | **Mostly clean; one fixed (REQ-18).** Audited every `JSON.parse(...) as T` and `Number(...)` in `apps/web`. The share-state restore path already re-validates through `validateShareState` (safe), the calibration cast is a post-guard union-narrowing (safe), and `billingCsv` guards `Number.isFinite` (safe). The exception: `loadEstimateCache` presence-checked but did not structurally validate the cached estimate before rendering it — a **persistence-drift** hole across app versions (both sessions found it independently; fixed as REQ-18 via `isEstimateResponseShape`, fail-closed to a cache miss). *Rule*: persisted state is external input on the next app version even when it is self-authored on this one — validate it as strictly as any wire input. |
+| 2026-08-12 | Inert request field (a knob wired to nothing) | **Found and fixed (REQ-19).** `avgImageGB` and a `crossRegionPull` flag existed all the way to the registry estimator, which fully modeled cross-region pull, but `create-estimate.ts` hard-wired `crossRegionPull: false` — so the path was unreachable and `avgImageGB` changed no total. A standing `TODO(REQ-2.x)` had named it. Threaded `crossRegionPull` through the OpenAPI/Zod contract, engine and UI; defaulted `avgImageGB` (tracked assumption) only when cross-region is on, so it is neither a silent $0 nor a reported-but-unused assumption. *Rule*: a field that never moves an output is a lie about what the tool models — wire it or delete it, and default it only where it is load-bearing. |
 | 2026-08-11 | Gate suite exists but nothing enforces it (the "unenforced check" anti-pattern, one layer up) | **Found and fixed.** The repo carries a large offline gate suite behind `pnpm test` (boundary / circular-dep / OpenAPI-drift / TF-honesty-drift / fallback-age / price-ledger checks + 4 Vitest projects + Playwright e2e), and three docs (`ARCHITECTURE.md`, `NEXT_STEPS.md`, this plan) already referred to "CI" as the thing enforcing them — but there was **no `.github/workflows/` at all**, so the gates only ran when a developer chose to run them locally. That is exactly the failure mode the gate scripts themselves guard against (a check that exits 0 without running looks identical to a passing check), promoted one level: an entire suite that runs nowhere by default. Added `.github/workflows/ci.yml` running the same `pnpm test` (plus a `tsc --noEmit` typecheck) on every push to `main` and every PR — pnpm/Node pinned from the `packageManager` field + `engines`, `--frozen-lockfile` so a stale lockfile fails loudly, Chromium installed for e2e. Corrected the stale "CI drift check later" note in `ARCHITECTURE.md`. *Rule*: a gate that is not wired into an automatic trigger is documentation, not enforcement — "we have CI" is a claim to verify against `.github/workflows`, not assume from the presence of gate scripts. |
 
 **Standing rule this class earned**: when a test pins a clock, pin it on *every*

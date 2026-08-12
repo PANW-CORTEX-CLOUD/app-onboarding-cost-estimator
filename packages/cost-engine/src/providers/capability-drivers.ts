@@ -43,10 +43,13 @@ export type VolumeBag = Record<string, number | string | boolean | undefined>;
  * for those "absent" has no honest reading other than refusal.
  *
  * `registry` lists `imageCount` only. Its second input, `avgImageGB`, feeds the
- * cross-region pull path (`amount = crossRegionPull ? pullGb × rate : 0`), and
- * `crossRegionPull` is currently hard-wired `false`, so `avgImageGB` does not
- * affect any priced total — requiring it would force a field that changes
- * nothing. See the TODO at the registry estimator call site.
+ * cross-region pull path (`amount = crossRegionPull ? pullGb × rate : 0`).
+ * `crossRegionPull` now comes from the request (REQ-19), so `avgImageGB` is
+ * load-bearing exactly when it is set — but it is still not a *required* driver
+ * here, because `create-estimate.ts` gives it a tracked assumption default when
+ * `crossRegionPull` is on (and leaves it inert when off). A required driver has
+ * no honest default; `avgImageGB` does, so it belongs with `scansPerMonth` et
+ * al., not in this list.
  *
  * `discovery` and `audit_logs` are absent on purpose: discovery has no meter
  * at all, and audit volume is derived from `accountCount`, which always has a

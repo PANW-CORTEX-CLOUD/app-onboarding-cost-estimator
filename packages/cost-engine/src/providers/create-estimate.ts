@@ -31,6 +31,7 @@ import { bandFromExpected } from "./dspm/dspm.types.ts";
 import { appendTfHonestyWarnings } from "./tf-honesty-warnings.ts";
 import {
   DEFAULT_ACCOUNT_COUNT,
+  DEFAULT_AVG_IMAGE_GB,
   DEFAULT_AVG_OBJECT_SIZE_MB,
   DEFAULT_ADS_SCANS_PER_MONTH,
   DEFAULT_AVG_PACKAGE_GB,
@@ -107,6 +108,13 @@ export type CreateEstimateRequest = {
     pctScanned?: number;
     imageCount?: number;
     avgImageGB?: number;
+    /**
+     * Whether registry scanning pulls images across a region boundary. Same-region
+     * pulls incur no egress and price at $0; cross-region pulls bill
+     * `imageCount × avgImageGB × scansPerMonth` on the provider egress meter.
+     * When false/omitted, `avgImageGB` is inert (changes no total).
+     */
+    crossRegionPull?: boolean;
     packageCount?: number;
     egressGB?: number;
     /** Average event bytes for stream GB→events (Azure ingress). Must be > 0. */
@@ -403,28 +411,35 @@ export async function createEstimate(
   }
 
   if (caps.registry) {
-    // TODO(REQ-2.x, registry cross-region): crossRegionPull is hard-wired false,
-    // so registry always prices at $0 (same-region pulls are free) and avgImageGB
-    // never affects any total — it only feeds the cross-region pull path. Either
-    // thread crossRegionPull + a region-pair through the request so avgImageGB
-    // becomes live, or drop avgImageGB from the request schema as an inert input.
-    // Until then avgImageGB is intentionally NOT a required sizing driver (see
-    // capability-drivers.ts) because requiring a field that changes nothing would
-    // be user-hostile. `imageCount ?? 0` is guard-protected (imageCount is a
-    // required driver); `avgImageGB ?? 0` is inert by the model above.
+    // REQ-19: registry scanning is $0 for same-region pulls (no egress) and
+    // bills `imageCount × avgImageGB × scansPerMonth × egressRate` for
+    // cross-region pulls. `crossRegionPull` comes from the request (default
+    // false), so `avgImageGB` is load-bearing exactly when it is set.
+    //
+    // Only default `avgImageGB` when it actually matters. When crossRegionPull
+    // is off the value changes no total, so tracking a substituted default
+    // would report an assumption the estimate never used; when it is on, an
+    // absent `avgImageGB` would otherwise collapse the cross-region line to a
+    // silent $0 (the REQ-6.2 multiplicand trap), so it gets a tracked default.
+    // `imageCount ?? 0` stays guard-protected (imageCount is a required driver
+    // via capability-drivers.ts).
+    const crossRegionPull = vol.crossRegionPull === true;
+    const avgImageGB = crossRegionPull
+      ? defaults.resolve("volume.avgImageGB", vol.avgImageGB, DEFAULT_AVG_IMAGE_GB)
+      : vol.avgImageGB ?? 0;
     const reg = estimateRegistryScan(
       provider,
       {
         enabled: true,
         region,
         imageCount: vol.imageCount ?? 0,
-        avgImageGB: vol.avgImageGB ?? 0,
+        avgImageGB,
         scansPerMonth: defaults.resolve(
           "volume.scansPerMonth",
           vol.scansPerMonth,
           DEFAULT_SCANS_PER_MONTH,
         ),
-        crossRegionPull: false,
+        crossRegionPull,
       },
       rates,
     );

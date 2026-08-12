@@ -12,6 +12,12 @@ export type CapabilityVolumeFieldsProps = {
   avgUsedDiskGB: number;
   imageCount: number;
   avgImageGB: number;
+  /**
+   * Whether registry scanning pulls images cross-region (REQ-19). Off → $0
+   * same-region pull and `avgImageGB` is inert; on → egress is billed on the
+   * pulled image volume, so `avgImageGB` becomes load-bearing.
+   */
+  crossRegionPull: boolean;
   packageCount: number;
   egressGB: number;
   /** Average scanned object size in MB — converts DSPM estate GB into billable operations. */
@@ -28,6 +34,7 @@ export function CapabilityVolumeFields({
   avgUsedDiskGB,
   imageCount,
   avgImageGB,
+  crossRegionPull,
   packageCount,
   egressGB,
   avgObjectSizeMB,
@@ -172,6 +179,24 @@ export function CapabilityVolumeFields({
                 onChange({ avgImageGB: Number(e.target.value) || 0 })
               }
             />
+            <span className="field-hint">
+              Only affects the total when cross-region pull is on (below);
+              same-region pulls are free.
+            </span>
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              data-testid="input-cross-region-pull"
+              checked={crossRegionPull}
+              onChange={(e) => onChange({ crossRegionPull: e.target.checked })}
+            />
+            Scanner pulls images cross-region
+            <span className="field-hint">
+              Registry pulls are free within a region. Turn this on only if the
+              scanner runs in a different region than the registry — then image
+              egress (images × avg size × scans) is billed.
+            </span>
           </label>
         </>
       ) : null}

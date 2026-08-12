@@ -37,6 +37,7 @@ const sample: EstimatorInputsState = {
     peakMBps: 1,
     peakEventsPerSec: 1000,
     overrideStreamMetrics: true,
+    crossRegionPull: false,
     dataEstateGB: 0,
     pctScanned: 0,
     scansPerMonth: 0,

@@ -90,6 +90,12 @@ export const DEFAULT_METADATA: Record<
     rationale:
       "Tracked for reporting only — serverless scanning bills per invocation, so this never multiplies a rate.",
   },
+  "volume.avgImageGB": {
+    label: "Average image size",
+    kind: "assumption",
+    rationale:
+      "Cross-region registry scanning bills egress on the images it pulls, so this converts your image count into transferred gigabytes. Only applied when cross-region pull is on; a property of your registry, not the cloud, so override it with your real average.",
+  },
 };
 
 /**

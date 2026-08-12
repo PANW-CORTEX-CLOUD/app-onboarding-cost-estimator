@@ -354,6 +354,17 @@ components:
         avgImageGB:
           type: number
           minimum: 0
+          description: >
+            Average compressed container-image size in GB. Only affects the
+            total for cross-region registry scanning (crossRegionPull=true),
+            where the scan pulls images across a region boundary and pays
+            egress; same-region pulls are $0 and this field is inert.
+        crossRegionPull:
+          type: boolean
+          description: >
+            Whether registry scanning pulls images across a region boundary.
+            False/omitted → same-region, no egress, $0 pull. True → bill
+            imageCount × avgImageGB × scansPerMonth on the provider egress meter.
         packageCount:
           type: number
           minimum: 0

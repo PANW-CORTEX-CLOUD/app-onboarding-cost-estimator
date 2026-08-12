@@ -134,4 +134,45 @@ test.describe("MVP happy path", () => {
     // The invented per-GB scan meters must never reach the breakdown again.
     expect(ids).not.toContain("blob-data-read-ops");
   });
+
+  test("REQ-19: registry cross-region pull is billed as egress through the UI", async ({
+    page,
+  }) => {
+    // The engine/API tests prove the pricing math and the $0-vs-billed split;
+    // this proves the toggle is wired end-to-end. Isolate registry by turning
+    // audit off, so the only thing that can put an egress meter in the
+    // breakdown is the cross-region registry pull we enable below — before
+    // REQ-19 `avgImageGB` was inert and this line could never appear.
+    await page.goto("/");
+
+    await page.getByTestId("scope-cap-auditLogs").uncheck();
+    await page.getByTestId("scope-cap-registry").check();
+    await page.getByTestId("tf-mode-what-if").check();
+    await page.getByTestId("journey-step-continue").click();
+    await page.getByTestId("journey-step-continue").click();
+
+    await page.getByTestId("input-image-count").fill("100");
+    await page.getByTestId("input-avg-image-gb").fill("2");
+    await page.getByTestId("input-cross-region-pull").check();
+    await page.getByTestId("journey-step-continue").click();
+    await page.getByTestId("run-estimate").click();
+
+    await expect(page.getByTestId("journey-tab-cost")).toHaveAttribute(
+      "aria-selected",
+      "true",
+      { timeout: 60_000 },
+    );
+    await expect(page.getByTestId("summary-monthly-expected")).not.toHaveText(
+      /—\s*$/,
+      { timeout: 60_000 },
+    );
+    await page.getByTestId("results-tab-cost").click();
+    await page.getByTestId("result-flip-toggle").click();
+
+    const ids = (
+      await page.getByTestId("cost-breakdown").locator(".meter-id").allTextContents()
+    ).map((m) => m.trim());
+    // Audit is off, so egress here can only be the cross-region image pull.
+    expect(ids).toContain("azure-egress-gb");
+  });
 });

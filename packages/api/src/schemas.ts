@@ -50,6 +50,7 @@ export const CreateEstimateRequestSchema = z
         pctScanned: z.number().nonnegative().optional(),
         imageCount: z.number().nonnegative().optional(),
         avgImageGB: z.number().nonnegative().optional(),
+        crossRegionPull: z.boolean().optional(),
         packageCount: z.number().nonnegative().optional(),
         egressGB: z.number().nonnegative().optional(),
         overrideStreamMetrics: z.boolean().optional(),

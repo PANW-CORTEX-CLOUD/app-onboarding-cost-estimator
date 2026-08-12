@@ -75,6 +75,15 @@ export function estimateRegistryScanForProvider(
     notes.push(
       `cross-region pull uplift: ${pullGb} GB × ${meters.pullMeterId}`,
     );
+    // Honesty note (REQ-3): the egress meter can carry a graduated tier ladder,
+    // but registry pull volume is priced at its flat first-tier rate here rather
+    // than laddered. Registry pull and the egress capability bill the same meter
+    // independently, so laddering each in isolation would understate the blended
+    // rate; a flat first-tier price is the conservative, defensible choice for a
+    // Low-confidence line. Stated rather than silently applied.
+    notes.push(
+      `priced at the flat first-tier ${meters.pullMeterId} rate; graduated egress tiers are not applied to registry pull volume`,
+    );
   }
 
   const lineItems: LineItem[] = [

@@ -158,3 +158,52 @@ describe("REQ-15 EDGE — an adapter that throws surfaces as a 5xx problem+json,
     expect(body.instance).toBe(res.headers.get("X-Request-Id"));
   });
 });
+
+describe("REQ-19 — registry cross-region pull over HTTP", () => {
+  it("POST /v1/estimates with crossRegionPull bills the registry line and reports the avgImageGB assumption", async () => {
+    const app = createApp({ ratesOptions: offline() });
+    const res = await app.request("/v1/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "azure",
+        region: "eastus",
+        capabilities: { registry: true },
+        // avgImageGB omitted on purpose: the engine must default it (and report
+        // the assumption) rather than collapse the cross-region line to $0.
+        volume: { imageCount: 100, scansPerMonth: 1, crossRegionPull: true },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const reg = body.lineItems.find(
+      (li: { capability: string }) => li.capability === "registry",
+    );
+    expect(reg).toBeDefined();
+    expect(reg.amount).toBeGreaterThan(0);
+    const applied = body.appliedDefaults?.find(
+      (d: { field: string }) => d.field === "volume.avgImageGB",
+    );
+    expect(applied?.kind).toBe("assumption");
+  });
+
+  it("same request without crossRegionPull leaves the registry line at $0", async () => {
+    const app = createApp({ ratesOptions: offline() });
+    const res = await app.request("/v1/estimates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "azure",
+        region: "eastus",
+        capabilities: { registry: true },
+        volume: { imageCount: 100, avgImageGB: 2, scansPerMonth: 1 },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const reg = body.lineItems.find(
+      (li: { capability: string }) => li.capability === "registry",
+    );
+    expect(reg.amount).toBe(0);
+  });
+});

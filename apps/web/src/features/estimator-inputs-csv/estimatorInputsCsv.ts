@@ -30,6 +30,8 @@ export type EstimatorInputsVolume = {
   peakMBps: number;
   peakEventsPerSec: number;
   overrideStreamMetrics: boolean;
+  /** Registry cross-region pull flag (REQ-19); makes avgImageGB load-bearing. */
+  crossRegionPull: boolean;
   dataEstateGB: number;
   pctScanned: number;
   scansPerMonth: number;
@@ -188,6 +190,10 @@ export function exportEstimatorInputsCsv(state: EstimatorInputsState): string {
     "volume.overrideStreamMetrics",
     String(state.volume.overrideStreamMetrics),
   ]);
+  rows.push([
+    "volume.crossRegionPull",
+    String(state.volume.crossRegionPull),
+  ]);
   for (const k of ASSUMPTION_NUMBER_KEYS) {
     rows.push([`assumption.${k}`, String(state.assumptions[k])]);
   }
@@ -310,6 +316,7 @@ export function parseEstimatorInputsCsv(
     ...CAPABILITY_KEYS.map((k) => `capability.${k}`),
     ...VOLUME_NUMBER_KEYS.map((k) => `volume.${k}`),
     "volume.overrideStreamMetrics",
+    "volume.crossRegionPull",
     ...ASSUMPTION_NUMBER_KEYS.map((k) => `assumption.${k}`),
     "assumption.logIntensity",
   ]);
@@ -377,6 +384,7 @@ export function parseEstimatorInputsCsv(
     peakMBps: 0,
     peakEventsPerSec: 0,
     overrideStreamMetrics: false,
+    crossRegionPull: false,
     dataEstateGB: 0,
     pctScanned: 0,
     scansPerMonth: 0,
@@ -403,6 +411,11 @@ export function parseEstimatorInputsCsv(
   if (overrideRaw != null) {
     const b = parseBool(overrideRaw, "volume.overrideStreamMetrics", errors);
     if (b != null) volume.overrideStreamMetrics = b;
+  }
+  const crossRegionRaw = map.get("volume.crossRegionPull");
+  if (crossRegionRaw != null) {
+    const b = parseBool(crossRegionRaw, "volume.crossRegionPull", errors);
+    if (b != null) volume.crossRegionPull = b;
   }
 
   const assumptionKeys = [

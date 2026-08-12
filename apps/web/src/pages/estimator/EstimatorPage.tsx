@@ -178,6 +178,13 @@ export function EstimatorPage() {
   const [avgImageGB, setAvgImageGB] = useState<number>(
     DEFAULT_VOLUME_PRESET.avgImageGB,
   );
+  /**
+   * Whether registry scanning pulls images cross-region (REQ-19). Off → $0
+   * same-region pull; on → the engine bills egress on `avgImageGB`, so the
+   * field stops being inert. Like `overrideStreamMetrics`, this is a behaviour
+   * flag kept out of the volume presets and share-state (booleans aren't shared).
+   */
+  const [crossRegionPull, setCrossRegionPull] = useState(false);
   const [packageCount, setPackageCount] = useState<number>(
     DEFAULT_VOLUME_PRESET.packageCount,
   );
@@ -280,6 +287,7 @@ export function EstimatorPage() {
       avgStoredGB,
       logIntensity,
       overrideStreamMetrics,
+      crossRegionPull,
       accountCount,
       monthlyActiveUsers: mau,
       ingressGBPerDay,
@@ -301,6 +309,7 @@ export function EstimatorPage() {
       avgImageGB,
       avgStoredGB,
       avgUsedDiskGB,
+      crossRegionPull,
       dataEstateGB,
       egressGB,
       imageCount,
@@ -559,6 +568,7 @@ export function EstimatorPage() {
                 accountCount,
                 monthlyActiveUsers: mau,
                 overrideStreamMetrics,
+                crossRegionPull,
                 ingressGBPerDay,
                 peakMBps,
                 peakEventsPerSec,
@@ -859,6 +869,7 @@ export function EstimatorPage() {
           monthlyActiveUsers: mau,
           logIntensity,
           overrideStreamMetrics,
+          crossRegionPull,
           ingressGBPerDay,
           peakMBps,
           peakEventsPerSec,
@@ -926,6 +937,7 @@ export function EstimatorPage() {
     avgUsedDiskGB,
     caps,
     client,
+    crossRegionPull,
     dataEstateGB,
     discoveryOnly,
     egressGB,
@@ -991,6 +1003,7 @@ export function EstimatorPage() {
           volume: {
             ...volume,
             overrideStreamMetrics: true,
+            crossRegionPull,
           },
         });
         setEstimate(result);
@@ -1022,6 +1035,7 @@ export function EstimatorPage() {
       avgImageGB,
       caps,
       client,
+      crossRegionPull,
       dataEstateGB,
       egressGB,
       imageCount,
@@ -1071,6 +1085,7 @@ export function EstimatorPage() {
       peakMBps,
       peakEventsPerSec,
       overrideStreamMetrics,
+      crossRegionPull,
       dataEstateGB,
       pctScanned,
       scansPerMonth,
@@ -1107,6 +1122,7 @@ export function EstimatorPage() {
     peakMBps,
     peakEventsPerSec,
     overrideStreamMetrics,
+    crossRegionPull,
     dataEstateGB,
     pctScanned,
     scansPerMonth,
@@ -1221,6 +1237,7 @@ export function EstimatorPage() {
             monthlyActiveUsers: mau,
             logIntensity,
             overrideStreamMetrics,
+            crossRegionPull,
             ingressGBPerDay,
             peakMBps,
             peakEventsPerSec,
@@ -1298,6 +1315,7 @@ export function EstimatorPage() {
         peakMBps,
         peakEventsPerSec,
         overrideStreamMetrics,
+        crossRegionPull,
         dataEstateGB,
         pctScanned,
         scansPerMonth,
@@ -1640,6 +1658,7 @@ export function EstimatorPage() {
                         avgUsedDiskGB={avgUsedDiskGB}
                         imageCount={imageCount}
                         avgImageGB={avgImageGB}
+                        crossRegionPull={crossRegionPull}
                         packageCount={packageCount}
                         egressGB={egressGB}
                         onChange={(patch) => {
@@ -1654,6 +1673,8 @@ export function EstimatorPage() {
                             setAvgUsedDiskGB(patch.avgUsedDiskGB);
                           if (patch.imageCount != null) setImageCount(patch.imageCount);
                           if (patch.avgImageGB != null) setAvgImageGB(patch.avgImageGB);
+                          if (patch.crossRegionPull != null)
+                            setCrossRegionPull(patch.crossRegionPull);
                           if (patch.packageCount != null)
                             setPackageCount(patch.packageCount);
                           if (patch.egressGB != null) setEgressGB(patch.egressGB);
