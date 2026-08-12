@@ -63,6 +63,11 @@ import { ScopeAccounts } from "../../widgets/ScopeAccounts/ScopeAccounts.tsx";
 import type { TfMode } from "../../shared/model/tf-grounding.ts";
 import { VolumeSignalsForm } from "../../widgets/VolumeSignals/VolumeSignalsForm.tsx";
 import { CostBreakdown } from "../../widgets/CostBreakdown/CostBreakdown.tsx";
+import { EstimateDiff } from "../../widgets/EstimateDiff/EstimateDiff.tsx";
+import {
+  diffEstimates,
+  type EstimateDiff as EstimateDiffData,
+} from "../../shared/lib/estimate-diff.ts";
 import { CostDrivers } from "../../widgets/CostDrivers/CostDrivers.tsx";
 import { AssumptionsPanel } from "../../widgets/AssumptionsPanel/AssumptionsPanel.tsx";
 import { CapabilityVolumeFields } from "../../widgets/CapabilityVolumeFields/CapabilityVolumeFields.tsx";
@@ -197,6 +202,21 @@ export function EstimatorPage() {
   const [capsError, setCapsError] = useState<string | null>(null);
 
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
+  // "What changed since the last quote": the previous computed estimate is held
+  // in a ref (not diffed until a second run produces one), and the current diff
+  // is state the results panel renders. See recordEstimateForDiff below.
+  const lastEstimateForDiffRef = useRef<EstimateResponse | null>(null);
+  const [estimateDiff, setEstimateDiff] = useState<EstimateDiffData | null>(null);
+  /**
+   * Record a freshly computed estimate for the "since last quote" diff: compare
+   * it against the previous one (if any) and stash the result, then remember it
+   * as the new baseline. The first run has no baseline, so it produces no diff.
+   */
+  const recordEstimateForDiff = useCallback((result: EstimateResponse) => {
+    const prev = lastEstimateForDiffRef.current;
+    setEstimateDiff(prev ? diffEstimates(prev, result) : null);
+    lastEstimateForDiffRef.current = result;
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sectionLoad, setSectionLoad] = useState<Record<string, boolean>>({});
@@ -877,6 +897,7 @@ export function EstimatorPage() {
         },
       });
       setEstimate(result);
+      recordEstimateForDiff(result);
       setEstimateWarnings(result.warnings ?? []);
       setFromCache(false);
       // Sync resolved volume only when values change — avoid auto-run input loops.
@@ -994,6 +1015,7 @@ export function EstimatorPage() {
           },
         });
         setEstimate(result);
+        recordEstimateForDiff(result);
         setFromCache(false);
         saveEstimateCache({
           provider,
@@ -1991,13 +2013,16 @@ export function EstimatorPage() {
                           />
                         }
                         low={
-                          <CostBreakdown
-                            estimate={estimate}
-                            capabilities={caps}
-                            warnings={estimateWarnings}
-                            breakdownRows={breakdownRows}
-                            discoveryOnlyEmpty={discoveryOnly}
-                          />
+                          <>
+                            <CostBreakdown
+                              estimate={estimate}
+                              capabilities={caps}
+                              warnings={estimateWarnings}
+                              breakdownRows={breakdownRows}
+                              discoveryOnlyEmpty={discoveryOnly}
+                            />
+                            <EstimateDiff diff={estimateDiff} />
+                          </>
                         }
                       />
                     ) : null}
