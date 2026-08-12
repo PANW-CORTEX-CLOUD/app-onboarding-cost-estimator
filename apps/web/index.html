@@ -4,12 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cloud Connector Cost Estimator</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Inline SVG favicon (a cost bar-chart). Data-URI rather than a /favicon.ico
+      file so there is no extra request and no 404 when the browser auto-fetches
+      the icon (the stray 404 the REQ-24 bug-hunt caught) — and it works with no
+      network, same rationale as the self-hosted fonts.
+    -->
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
-      rel="stylesheet"
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b3d2e'/%3E%3Crect x='7' y='16' width='4' height='9' rx='1' fill='%234ade80'/%3E%3Crect x='14' y='11' width='4' height='14' rx='1' fill='%234ade80'/%3E%3Crect x='21' y='7' width='4' height='18' rx='1' fill='%234ade80'/%3E%3C/svg%3E"
     />
+    <!--
+      Fonts are self-hosted (apps/web/public/fonts) rather than loaded from
+      fonts.googleapis.com. An external font CDN pings Google on every page load
+      (a data-egress/privacy cost for an internal tool) and fails outright in
+      air-gapped or CSP-locked networks — where it silently degraded to system
+      fonts and logged console errors (found in the REQ-24 bug-hunt). The local
+      copies are the latin-subset variable woff2 for the exact same families, so
+      the typography is unchanged and works with no network at all.
+    -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
   </head>
   <body>
     <div id="root"></div>

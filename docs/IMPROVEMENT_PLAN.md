@@ -1042,6 +1042,29 @@ how the exploitable version arrives later.
   warning, not a fake downgrade. *Tests*: engine-level (`create-estimate-mvp`) and
   API-level (`adversarial-validation`) both assert the warning fires.
 
+### UC-24.4 — The app is self-contained: no external resource, no console noise
+
+Driving the running UI with a console/network listener caught two external
+runtime dependencies that fail closed the wrong way — silently, in the browser,
+in exactly the network-locked environments an internal tool gets deployed into.
+
+- **T-24.4.1** `done` **Google Fonts loaded from a CDN.** `index.html` pulled
+  `fonts.googleapis.com/css2?family=IBM+Plex+Sans…&Newsreader…` on every page
+  load. In a network-locked run it `ERR_CONNECTION_RESET`s, silently degrades to
+  system fonts, and logs console errors; even when it works it pings Google on
+  every load (a data-egress cost for an internal tool). Fixed by **self-hosting**
+  the latin-subset variable woff2 for the same two families under
+  `apps/web/public/fonts/` with a local `fonts.css`; the CDN `<link>` and its
+  `preconnect`s are gone. Typography is unchanged and now works with no network.
+- **T-24.4.2** `done` **Missing `/favicon.ico` → 404.** The browser auto-fetches
+  a favicon; there was none, so every load logged a 404. Replaced with an inline
+  SVG data-URI icon (a cost bar-chart) — no request, no 404, no file.
+- **T-24.4.3** `done` **Regression guard.** New e2e
+  `no-external-resources.spec.ts` drives a full estimate and asserts **zero**
+  external (non-localhost) requests, zero failed requests, zero ≥400 responses,
+  and zero console/page errors — so re-adding a CDN `<link>`, an external image,
+  or any resource that 404s fails the build.
+
 ### Findings triaged as **not** bugs (recorded so they are not re-chased)
 
 - **Gov region returns a priced 200 for audit logs.** Correct: Gov fail-close is
