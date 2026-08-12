@@ -297,3 +297,74 @@ describe("package 13 — EDGE", () => {
     expect(rateCardFromFreeze(flat).unitTiers).toBeUndefined();
   });
 });
+
+describe("package 13 — REQ-24 reload integrity (tamper-evident)", () => {
+  function goodFreeze() {
+    return freezeEstimate({
+      result: {
+        provider: "azure",
+        lineItems: [
+          {
+            provider: "azure",
+            capability: "audit_logs",
+            meterId: "eh-standard-tu",
+            amount: 21.9,
+            confidence: "High",
+          },
+        ],
+        totals: { expected: 21.9 },
+        confidence: "High",
+      },
+      rateCard,
+      inputs,
+      now: NOW,
+    });
+  }
+
+  it("an untampered freeze loads ok", () => {
+    const loaded = loadFrozenEstimate(JSON.stringify(goodFreeze()), {
+      now: NOW,
+    });
+    expect(loaded.ok).toBe(true);
+  });
+
+  it("totals.expected edited away from the line-item sum → integrity_mismatch", () => {
+    for (const tampered of [0, 999_999, 21.9 + 1]) {
+      const frozen = { ...goodFreeze(), totals: { expected: tampered } };
+      const loaded = loadFrozenEstimate(JSON.stringify(frozen), { now: NOW });
+      expect(loaded.ok).toBe(false);
+      if (loaded.ok) return;
+      expect(loaded.code).toBe("integrity_mismatch");
+    }
+  });
+
+  it("a line-item amount edited without fixing the total → integrity_mismatch", () => {
+    const frozen = goodFreeze();
+    frozen.lineItems[0]!.amount = 5;
+    const loaded = loadFrozenEstimate(JSON.stringify(frozen), { now: NOW });
+    expect(loaded.ok).toBe(false);
+    if (loaded.ok) return;
+    expect(loaded.code).toBe("integrity_mismatch");
+  });
+
+  it("inputs edited while inputHash left stale → integrity_mismatch", () => {
+    const frozen = goodFreeze();
+    frozen.inputs = {
+      ...frozen.inputs,
+      volume: { ...frozen.inputs.volume, accountCount: 99_999 },
+    };
+    const loaded = loadFrozenEstimate(JSON.stringify(frozen), { now: NOW });
+    expect(loaded.ok).toBe(false);
+    if (loaded.ok) return;
+    expect(loaded.code).toBe("integrity_mismatch");
+  });
+
+  it("a tolerance-level rounding delta on the total still loads ok", () => {
+    // The check uses FREEZE_TOTAL_TOLERANCE_USD so genuine rounding never trips
+    // it — only edits well outside the tolerance are refused.
+    const frozen = goodFreeze();
+    frozen.totals.expected = 21.9 + FREEZE_TOTAL_TOLERANCE_USD / 2;
+    const loaded = loadFrozenEstimate(JSON.stringify(frozen), { now: NOW });
+    expect(loaded.ok).toBe(true);
+  });
+});

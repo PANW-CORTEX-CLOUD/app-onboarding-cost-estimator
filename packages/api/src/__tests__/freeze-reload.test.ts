@@ -111,19 +111,53 @@ describe("POST /v1/estimates/reload", () => {
     expect(body.title).toMatch(/model_version_mismatch/);
   });
 
-  it("EDGE: a tampered total is still returned as frozen, not recomputed", async () => {
-    // Reload replays what was pinned; it does not re-run the estimator. This
-    // documents that boundary explicitly so nobody later assumes reload
-    // validates arithmetic - the inputHash is what detects tampering.
+  it("REQ-24: a tampered total fails closed as integrity_mismatch, not reloaded as truth", async () => {
+    // Freeze re-runs the estimate server-side precisely so a client cannot echo
+    // back edited totals; reload must hold the same line. A hand-edited
+    // totals.expected no longer matches the sum of its line items, so it is
+    // refused — otherwise a doctored $0 (or an inflated total) would reload as an
+    // authoritative quote, the never-invent-$0 failure the engine forbids.
     const frozen = await (
       await postJson("/v1/estimates/freeze", baseRequest)
     ).json();
+    for (const tampered of [999_999, 0]) {
+      const res = await postJson("/v1/estimates/reload", {
+        payload: { ...frozen, totals: { expected: tampered } },
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.title).toMatch(/integrity_mismatch/);
+    }
+  });
+
+  it("REQ-24: a doctored input (with the hash left stale) fails closed", async () => {
+    const frozen = await (
+      await postJson("/v1/estimates/freeze", baseRequest)
+    ).json();
+    // Edit the inputs but leave inputHash as-is (a client editing the JSON by
+    // hand). Recomputing the hash over the altered inputs no longer matches.
     const res = await postJson("/v1/estimates/reload", {
-      payload: { ...frozen, totals: { expected: 999_999 } },
+      payload: {
+        ...frozen,
+        inputs: {
+          ...frozen.inputs,
+          volume: { ...frozen.inputs.volume, accountCount: 99_999 },
+        },
+      },
     });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.title).toMatch(/integrity_mismatch/);
+  });
+
+  it("an untampered freeze still round-trips through reload cleanly", async () => {
+    const frozen = await (
+      await postJson("/v1/estimates/freeze", baseRequest)
+    ).json();
+    const res = await postJson("/v1/estimates/reload", { payload: frozen });
     expect(res.status).toBe(200);
     const reloaded = await res.json();
-    expect(reloaded.payload.totals.expected).toBe(999_999);
+    expect(reloaded.payload.totals.expected).toBe(frozen.totals.expected);
     expect(reloaded.payload.inputHash).toBe(frozen.inputHash);
   });
 });

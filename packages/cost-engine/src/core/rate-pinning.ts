@@ -77,7 +77,11 @@ export type FreezeLoadOk = {
 
 export type FreezeLoadErr = {
   ok: false;
-  code: "corrupt" | "invalid_schema" | "model_version_mismatch";
+  code:
+    | "corrupt"
+    | "invalid_schema"
+    | "model_version_mismatch"
+    | "integrity_mismatch";
   error: string;
 };
 
@@ -360,6 +364,46 @@ export function loadFrozenEstimate(
       error:
         `frozen modelVersion=${payload.modelVersion} incompatible with engine ${current}; ` +
         `re-estimate with current model (pin invalidated gracefully)`,
+    };
+  }
+
+  // Integrity: the frozen blob is client-editable JSON. Freeze deliberately
+  // re-runs the estimate server-side "rather than trusting a client to echo back
+  // totals it could have edited" (schemas.ts) — but reload trusted exactly those
+  // echoed totals, so a hand-edited export re-loaded as truth. That is the
+  // never-invent-$0 failure the engine forbids: a tampered `totals.expected=0`
+  // for a real workload, or an inflated total, or a doctored input, all sailed
+  // through. Verify two invariants a genuine export always satisfies. Neither
+  // needs a shared secret or a re-price:
+  //   1. totals.expected == sum(lineItems.amount)  (createEstimate sums it once
+  //      from the same line items, so a legitimate blob matches within the
+  //      freeze tolerance; canonical rounding is why this uses the tolerance).
+  //   2. inputHash == createInputHash(inputs)  (canonicalJson drops undefined the
+  //      same way the stored JSON clone did, so a legitimate round-trip matches).
+  // A HMAC would additionally catch a *consistent* tamper (line items and totals
+  // edited together); that needs key management and is out of scope. These two
+  // catch the whole $0 / inflated / inconsistent / doctored-input class.
+  const lineItemsSum = payload.lineItems.reduce(
+    (sum, li) => sum + (typeof li.amount === "number" ? li.amount : NaN),
+    0,
+  );
+  if (!totalsWithinTolerance(lineItemsSum, payload.totals.expected)) {
+    return {
+      ok: false,
+      code: "integrity_mismatch",
+      error:
+        `frozen totals.expected=${payload.totals.expected} does not match the sum ` +
+        `of its line items (${lineItemsSum}); the export has been altered`,
+    };
+  }
+  const recomputedHash = createInputHash(payload.inputs);
+  if (recomputedHash !== payload.inputHash) {
+    return {
+      ok: false,
+      code: "integrity_mismatch",
+      error:
+        `frozen inputHash=${payload.inputHash} does not match its inputs ` +
+        `(recomputed ${recomputedHash}); the export has been altered`,
     };
   }
 
