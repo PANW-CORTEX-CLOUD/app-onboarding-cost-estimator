@@ -14,6 +14,9 @@ import {
   filterUsdUnitPrices,
 } from "../fallback-schema.ts";
 import { getRates, lookupUnitPrice } from "../get-rates.ts";
+import { UpstreamRateError } from "../../../core/errors.ts";
+import { createRatesCache } from "../rates-cache.ts";
+import type { RatesAdapter } from "../../../core/ports/rates-adapter.interface.ts";
 import {
   createAzureRatesAdapter,
   parseAzureRetailPrices,
@@ -262,6 +265,63 @@ describe("package 04 — EDGE", () => {
         meters: [],
       }),
     ).toThrow(/USD/);
+  });
+});
+
+describe("package 04 — REQ-20 UpstreamRateError taxonomy", () => {
+  it("throws UpstreamRateError when the adapter itself throws (rate source down)", async () => {
+    const exploding: RatesAdapter = {
+      provider: "azure",
+      async getRates() {
+        throw new Error("network down / feed unreachable");
+      },
+    };
+    // A broken adapter is an upstream failure, not the caller's fault — getRates
+    // must classify it so the API can render 502 rather than 400/500.
+    await expect(
+      getRates("azure", "eastus", {
+        adapters: { azure: exploding },
+        cache: createRatesCache(),
+        now: NOW,
+      }),
+    ).rejects.toBeInstanceOf(UpstreamRateError);
+  });
+
+  it("throws UpstreamRateError on a corrupt (non-finite/negative) source price — fails closed", async () => {
+    const corrupt: RatesAdapter = {
+      provider: "azure",
+      async getRates(region: string) {
+        return {
+          rates: {
+            provider: "azure" as const,
+            region,
+            currency: "USD" as const,
+            unitPrices: { "eh-standard-tu": -1 },
+            capturedAt: NOW.toISOString(),
+          },
+          ratesSource: "live" as const,
+          ageDays: 0,
+          warnings: [],
+        };
+      },
+    };
+    await expect(
+      getRates("azure", "eastus", {
+        adapters: { azure: corrupt },
+        cache: createRatesCache(),
+        now: NOW,
+      }),
+    ).rejects.toBeInstanceOf(UpstreamRateError);
+  });
+
+  it("EDGE: a normal fallback resolution does NOT throw (only genuine source failures do)", async () => {
+    const r = await getRates("azure", "eastus", {
+      adapters: { azure: createAzureRatesAdapter({ forceFallback: true, now: NOW }) },
+      cache: createRatesCache(),
+      now: NOW,
+    });
+    expect(r.ratesSource).toBe("fallback");
+    expect(Object.keys(r.rates.unitPrices).length).toBeGreaterThan(0);
   });
 });
 

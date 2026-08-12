@@ -4,6 +4,7 @@
  * CORS: browser clients must use API proxy only (never call cloud price APIs directly).
  */
 import type { CloudProvider, RateCard } from "../../core/models/estimate.types.ts";
+import { UpstreamRateError } from "../../core/errors.ts";
 import type { RatesAdapter } from "../../core/ports/rates-adapter.interface.ts";
 import {
   evaluateRatesFreshness,
@@ -73,7 +74,9 @@ function withFreshness(
  * fails closed (throws) rather than caching a corrupt/partial price row.
  * @param provider Any string; only "azure"/"aws"/"gcp" resolve real rates —
  * anything else returns an empty fallback RateCard + warning (no invented meters).
- * @throws when an adapter returns a non-finite or negative unit price.
+ * @throws {UpstreamRateError} when the adapter itself throws (rate source down)
+ * or returns a non-finite/negative unit price (corrupt source data). Both are
+ * upstream failures, not caller input, so the API maps them to 502 not 400.
  */
 export async function getRates(
   provider: string,
@@ -115,7 +118,20 @@ export async function getRates(
     }
   }
 
-  const result = await adapters[provider].getRates(region);
+  // An adapter is designed to fall back to its bundled prices internally, so a
+  // throw here is the rate *source* failing outright (a broken adapter, an
+  // outage the fallback could not cover) — an upstream dependency failure, not
+  // the caller's fault. Mark it so the API can render an honest 5xx instead of
+  // a 400 that blames the request.
+  let result: Awaited<ReturnType<RatesAdapter["getRates"]>>;
+  try {
+    result = await adapters[provider].getRates(region);
+  } catch (e) {
+    throw new UpstreamRateError(
+      `rate adapter for '${provider}' failed to resolve rates for '${region}'`,
+      { cause: e },
+    );
+  }
   const normalized: RatesResult = {
     ...result,
     warnings: result.warnings ?? [],
@@ -123,9 +139,11 @@ export async function getRates(
 
   // EDGE: never invent $0 for missing meters — empty unitPrices only when
   // adapter explicitly returned fallback-empty (unknown provider path above).
+  // A non-finite/negative price is corrupt *source* data (live or bundled), not
+  // a client input, so it fails closed as an upstream error, not a 400.
   for (const [meterId, price] of Object.entries(normalized.rates.unitPrices)) {
     if (typeof price !== "number" || !Number.isFinite(price) || price < 0) {
-      throw new Error(
+      throw new UpstreamRateError(
         `partial/invalid meter '${meterId}' — fail closed (no invented $0)`,
       );
     }

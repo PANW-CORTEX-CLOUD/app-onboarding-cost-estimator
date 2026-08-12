@@ -26,6 +26,7 @@ import {
   azureCapabilityMeterMap,
   awsCapabilityMeterMap,
   gcpCapabilityMeterMap,
+  UpstreamRateError,
   type GetRatesOptions,
 } from "@cloud-connector/cost-engine";
 import { problem, type ProblemDetails } from "./problem.ts";
@@ -84,6 +85,34 @@ function problemJson(
   return c.body(JSON.stringify(body), status, {
     "Content-Type": "application/problem+json",
   });
+}
+
+/**
+ * Render a rate-source failure (`UpstreamRateError`) as a **502** problem+json.
+ *
+ * A failed or corrupt rate source is not the caller's fault and nothing in their
+ * request can fix it, so a 400 would misattribute blame and a 500 would call it
+ * an internal bug. 502 says plainly "an upstream dependency (the pricing feed)
+ * failed — retry". Like the 500 net, the raw cause is **not** echoed (CWE-209):
+ * it can carry a provider's error text or an internal URL. The client gets a
+ * stable message plus the request id (`instance` + `X-Request-Id`) to quote;
+ * the real cause is already logged against that id by the caller.
+ */
+function upstreamRateProblem(c: Context) {
+  const requestId = requestIdOf(c);
+  c.header("X-Request-Id", requestId);
+  return problemJson(
+    c,
+    {
+      ...problem(
+        502,
+        "Rate source unavailable",
+        "The pricing data source could not be reached or returned invalid data. This is not a problem with your request — retry shortly, and quote the request id if it persists.",
+      ),
+      instance: requestId,
+    },
+    502,
+  );
 }
 
 function sanitizeRatesResponse(
@@ -178,16 +207,20 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
   // caller can parse — and, critically, as a response rather than a hung
   // request.
   //
-  // TODO(REQ-15, error-taxonomy): a rate-feed outage is really an upstream
-  // dependency failure (502/503), and `/v1/estimates`'s own catch currently
-  // maps an adapter throw to 400 alongside genuine validation refusals. Giving
-  // the engine typed error classes (UpstreamRateError vs ValidationError) would
-  // let both this net and that catch pick the honest status instead of a
-  // catch-all. Out of scope for the injection seam itself.
+  // Error taxonomy (REQ-20): a rate-feed outage is an *upstream* dependency
+  // failure, not an internal bug, so `getRates` now throws a typed
+  // `UpstreamRateError` for a broken adapter or corrupt source data. This net
+  // renders that as a 502 (via the shared helper) and everything else — a
+  // genuinely unexpected throw — as the generic 500 below. `/v1/estimates` makes
+  // the same split in its own catch (upstream → 502, validation refusal → 400).
   app.onError((err, c) => {
     const detail = err instanceof Error ? err.message : "unknown error";
     // Log the real cause server-side, keyed to the request id.
     logRejection(c, `unhandled: ${detail}`);
+    // A rate source failing is not an internal error — say 502, not 500.
+    if (err instanceof UpstreamRateError) {
+      return upstreamRateProblem(c);
+    }
     // Do NOT echo an *unexpected* error's raw message to the client (CWE-209 /
     // OWASP improper error handling). Unlike the 400 validation/fail-closed
     // paths — whose detail is domain-controlled and client-actionable — an
@@ -350,6 +383,13 @@ export function createApp(deps: CreateAppDeps = {}): Hono {
       // rates); the reason is the useful part, so it is logged, not just returned.
       const detail = e instanceof Error ? e.message : "unknown error";
       logRejection(c, `estimate: ${detail}`);
+      // A rate-source failure (REQ-20) is not the caller's fault — 502, not a
+      // 400 that echoes a corrupt-price/adapter message as if they sent bad
+      // input. Genuine validation refusals still echo their client-actionable
+      // reason as a 400.
+      if (e instanceof UpstreamRateError) {
+        return upstreamRateProblem(c);
+      }
       return problemJson(c, problem(400, "Estimate failed", detail), 400);
     }
   });

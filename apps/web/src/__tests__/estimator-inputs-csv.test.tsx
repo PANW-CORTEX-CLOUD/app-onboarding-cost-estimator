@@ -215,7 +215,7 @@ describe("[01/01][EDGE] fail-closed parsers", () => {
   });
 });
 
-describe("REQ-20 — customer plan-file template", () => {
+describe("REQ-21 — customer plan-file template", () => {
   it("the template parses cleanly into a valid state (no errors)", () => {
     const csv = customerPlanTemplateCsv();
     const parsed = parseEstimatorInputsCsv(csv);
