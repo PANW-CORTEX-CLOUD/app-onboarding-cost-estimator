@@ -64,6 +64,10 @@ const PATHS = Object.freeze({
 /** Turn locks older than this are pruned; they only exist to de-duplicate one turn. */
 const TURN_LOCK_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Journal size that triggers a trim, and how many recent entries survive it. */
+const JOURNAL_MAX_BYTES = 1024 * 1024;
+const JOURNAL_KEEP_LINES = 500;
+
 /**
  * `stop_reason` values that mean the turn did not end normally. Looping on these would
  * re-prompt into the same wall, so the hook stands down and lets the session stop.
@@ -215,6 +219,19 @@ function journal(claudeDir, entry) {
   try {
     const file = path.join(claudeDir, PATHS.journal);
     fs.mkdirSync(path.dirname(file), { recursive: true });
+    // Rotate before appending. The journal is the only unbounded thing this hook writes —
+    // one line per Stop event, forever, in a directory the user never cleans. Trimming to
+    // the most recent entries keeps it useful for debugging without growing without limit,
+    // which is exactly the "collections that only ever grow" smell the loop hunts for
+    // elsewhere.
+    if (fs.existsSync(file) && fs.statSync(file).size > JOURNAL_MAX_BYTES) {
+      const kept = fs
+        .readFileSync(file, "utf8")
+        .split("\n")
+        .filter((l) => l.trim() !== "")
+        .slice(-JOURNAL_KEEP_LINES);
+      fs.writeFileSync(file, `${kept.join("\n")}\n`, "utf8");
+    }
     fs.appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
   } catch {
     /* ignore */
@@ -233,12 +250,20 @@ function journal(claudeDir, entry) {
  * Keyed on the session plus a digest of the final message rather than on `prompt_id`,
  * because a hook-continued turn can carry the same prompt id as the turn that spawned it.
  *
+ * An empty message is **not** claimed. Its digest is a constant, so two different turns that
+ * both failed to yield a message would collide: the second would look like a duplicate of
+ * the first and stand down, ending the loop instead of re-prompting for the missing control
+ * block. Skipping the claim costs nothing — a message-less turn never advances the iteration
+ * counter, so a double-registered hook can only shorten the missing-marker streak, which is
+ * capped anyway.
+ *
  * @param {string} claudeDir Absolute path to `<project>/.claude`.
  * @param {string | null} sessionId Session id from the payload.
  * @param {string} message The turn's final assistant message.
  * @returns {boolean} `true` when this process owns the turn.
  */
 function claimTurn(claudeDir, sessionId, message) {
+  if (message.trim() === "") return true;
   const key = crypto
     .createHash("sha256")
     .update(`${sessionId ?? "no-session"} ${message}`)
@@ -286,11 +311,30 @@ function pruneTurnLocks(dir) {
  * `decision: "block"` is how a Stop hook continues the conversation. A non-zero exit would
  * turn a considered decision into an error notice.
  *
+ * Written with `fs.writeSync` rather than `process.stdout.write`, because the payload is
+ * large — a blocking decision carries the entire loop prompt, ~9 KB — and
+ * `process.stdout.write` to a pipe can complete asynchronously, which `process.exit()` on
+ * the next line would cut short. Truncated JSON reads to Claude Code as a malformed hook
+ * result, so the flush has to be guaranteed before exiting. `EAGAIN` is retried because a
+ * non-blocking pipe can refuse a partial write when the reader is briefly behind.
+ *
  * @param {object} output Hook JSON output.
  * @returns {never} Exits the process.
  */
 function emit(output) {
-  process.stdout.write(`${JSON.stringify(output)}\n`);
+  const buffer = Buffer.from(`${JSON.stringify(output)}\n`, "utf8");
+  let written = 0;
+  while (written < buffer.length) {
+    try {
+      written += fs.writeSync(1, buffer, written, buffer.length - written);
+    } catch (err) {
+      const code = /** @type {NodeJS.ErrnoException} */ (err)?.code;
+      if (code === "EAGAIN") continue;
+      // Nothing useful is left to do if stdout is gone; exiting 0 keeps the failure
+      // non-blocking for the session, which is the fail-open rule for this hook.
+      break;
+    }
+  }
   process.exit(0);
 }
 
