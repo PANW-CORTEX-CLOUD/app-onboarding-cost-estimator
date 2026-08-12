@@ -138,6 +138,7 @@ export type {
 } from "./core/index.ts";
 export {
   PROJECTION_MAX_MONTHS,
+  PROJECTION_MAX_LINE_ITEMS,
   THROUGHPUT_STEP_METER_IDS,
   VOLUME_ELASTIC_CAPABILITIES,
   isVolumeElastic,

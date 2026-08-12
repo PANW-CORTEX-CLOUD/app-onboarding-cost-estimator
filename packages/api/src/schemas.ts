@@ -2,7 +2,10 @@
  * Zod request schemas mirroring openapi/openapi.yaml (additionalProperties: false).
  */
 import { z } from "zod";
-import { PROJECTION_MAX_MONTHS } from "@cloud-connector/cost-engine";
+import {
+  PROJECTION_MAX_LINE_ITEMS,
+  PROJECTION_MAX_MONTHS,
+} from "@cloud-connector/cost-engine";
 
 export const CloudProviderSchema = z.enum(["azure", "aws", "gcp"]);
 
@@ -89,12 +92,18 @@ export const CreateProjectionRequestSchema = z
             provider: z.string().min(1),
             capability: z.string().min(1),
             meterId: z.string().min(1),
-            amount: z.number(),
+            // A projected cost is never negative — every sibling numeric here is
+            // nonnegative; a bare z.number() let a line item drive the whole
+            // projection negative (REQ-24).
+            amount: z.number().nonnegative(),
             confidence: z.enum(["High", "Med", "Low"]),
             volumeElastic: z.boolean().optional(),
           })
           .strict(),
       )
+      // Cap the array: projectCosts builds months × lineItems stack objects, so
+      // an uncapped list is a CPU/memory amplification vector (REQ-24).
+      .max(PROJECTION_MAX_LINE_ITEMS)
       .optional(),
   })
   .strict();

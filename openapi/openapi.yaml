@@ -759,6 +759,10 @@ components:
         lineItems:
           type: array
           description: Estimate line items for stacked run-rate (same meters as createEstimate)
+          # Mirrors packages/cost-engine/src/core/project-costs.ts
+          # PROJECTION_MAX_LINE_ITEMS. projectCosts builds months × lineItems
+          # objects, so an uncapped array is a CPU/memory amplification vector.
+          maxItems: 200
           items:
             $ref: "#/components/schemas/ProjectionLineItem"
     ProjectionLineItem:
@@ -774,6 +778,7 @@ components:
           type: string
         amount:
           type: number
+          minimum: 0
         confidence:
           type: string
           enum: [High, Med, Low]

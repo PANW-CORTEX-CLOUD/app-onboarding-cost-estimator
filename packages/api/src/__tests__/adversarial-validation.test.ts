@@ -125,6 +125,73 @@ describe("REQ-24 — region length is bounded", () => {
   });
 });
 
+describe("REQ-24 — projections are bounded and never emit a non-finite cost", () => {
+  function projection(body: Record<string, unknown>): string {
+    return JSON.stringify({ monthlyExpected: 100, months: 12, ...body });
+  }
+  function postProjection(app: ReturnType<typeof createApp>, body: string) {
+    return app.request("/v1/projections", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body,
+    });
+  }
+  function lineItems(n: number, amount = 1) {
+    return Array.from({ length: n }, () => ({
+      provider: "azure",
+      capability: "auditLogs",
+      meterId: "m",
+      amount,
+      confidence: "High",
+    }));
+  }
+
+  it("rejects a line-items array over the cap (amplification vector)", async () => {
+    const app = createApp();
+    const res = await postProjection(
+      app,
+      projection({ lineItems: lineItems(201) }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain(
+      "application/problem+json",
+    );
+  });
+
+  it("accepts a legal-sized line-items array", async () => {
+    const app = createApp();
+    const res = await postProjection(
+      app,
+      projection({ lineItems: lineItems(50) }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects a negative line-item amount", async () => {
+    const app = createApp();
+    const res = await postProjection(
+      app,
+      projection({ lineItems: lineItems(1, -999) }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("fails closed on numeric overflow instead of returning null cost fields", async () => {
+    const app = createApp();
+    const res = await postProjection(
+      app,
+      JSON.stringify({
+        monthlyExpected: 1e308,
+        months: 36,
+        annualGrowthPercent: 1e300,
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.detail).toMatch(/overflow|not finite/i);
+  });
+});
+
 describe("REQ-24 — an empty selection is not a silent $0", () => {
   it("prices nothing but warns instead of presenting an authoritative $0", async () => {
     const app = createApp();

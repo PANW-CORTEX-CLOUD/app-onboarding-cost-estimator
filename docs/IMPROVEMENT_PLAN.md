@@ -1076,6 +1076,49 @@ in exactly the network-locked environments an internal tool gets deployed into.
   re-subsetting the binary needs a toolchain dependency and risks dropping
   `$`/`€`/`™`/typographic punctuation for a marginal win.
 
+### UC-24.5 — A frozen estimate cannot be edited and re-loaded as truth
+
+A second adversarial pass (freeze/reload/projections, run as a subagent) found
+the reload path trusted a client-editable blob.
+
+- **T-24.5.1** `done` **Reload was shape-only; tampering round-tripped.**
+  `/v1/estimates/reload` validated the frozen blob's *types* but never checked
+  that `totals.expected` matched its line items or that `inputHash` matched its
+  inputs — so a hand-edited `totals.expected=0` for a real workload, an inflated
+  total, or a doctored input all reloaded as an authoritative quote. Freeze
+  re-runs server-side *precisely* so a client cannot echo back edited totals
+  (schemas.ts); reload now holds the same line. `loadFrozenEstimate` verifies two
+  secret-free invariants after schema + model-version checks, failing closed with
+  a new `integrity_mismatch` code: `sum(lineItems.amount) == totals.expected`
+  within `FREEZE_TOTAL_TOLERANCE_USD` (genuine rounding never trips it), and
+  `createInputHash(inputs) == inputHash`. The old test that asserted a tampered
+  total reloads 200 encoded the hole (its comment even claimed the inputHash
+  detected tampering while nothing verified it) — rewritten to assert fail-closed.
+  A HMAC (to catch a *consistent* line-items+total edit) needs key management and
+  is noted as out of scope. *Tests*: engine (`rate-pinning`) + API
+  (`freeze-reload`) cover tampered total, edited line item, doctored input, a
+  clean round-trip, and a tolerance-level delta that still loads.
+
+### UC-24.6 — Projections are bounded and never emit a non-finite cost
+
+- **T-24.6.1** `done` **Uncapped `lineItems[]` was a CPU/memory amplifier.**
+  `projectCosts` builds `months × lineItems` stack objects and clones them for
+  `table`; the array had no `.max()` (while `region` was capped for exactly this
+  reason). A 50k-item request measured ~16 s / ~370 MB. Added
+  `PROJECTION_MAX_LINE_ITEMS = 200` (engine SSOT), enforced in the zod schema, the
+  OpenAPI contract (`maxItems`), and defensively in `projectCosts`.
+- **T-24.6.2** `done` **Numeric overflow leaked `null` cost fields.** A finite but
+  enormous input compounded to `Infinity`, which `JSON.stringify` serialized as
+  `null` — a broken cost masquerading as "no value". `projectCosts` now asserts
+  each month's `expected`/`cumulative` stays finite and fails closed otherwise,
+  like `validateRateCard` refuses a non-finite price.
+- **T-24.6.3** `done` **`lineItems[].amount` allowed negatives.** Every sibling
+  numeric is `nonnegative()`; the bare `z.number()` let a line item drive the
+  projection negative. Tightened to `nonnegative()` in schema + OpenAPI.
+  *Tests*: engine (`project-costs`) + API (`adversarial-validation`) cover the
+  cap boundary, overflow via both `monthlyExpected` and a line item, and a
+  negative amount.
+
 ### Findings triaged as **not** bugs (recorded so they are not re-chased)
 
 - **Gov region returns a priced 200 for audit logs.** Correct: Gov fail-close is

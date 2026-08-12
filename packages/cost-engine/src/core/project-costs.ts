@@ -8,6 +8,17 @@
  */
 export const PROJECTION_MAX_MONTHS = 36;
 
+/**
+ * Upper bound on projected line items. A real estimate carries a handful of
+ * meters (≤ ~8 capabilities × a few meters each); 200 is generous headroom.
+ * The bound exists because `projectCosts` builds `months × lineItems` stack
+ * objects and clones them again for `table`, so an uncapped array is a
+ * CPU/memory amplification vector — an adversarial 50k-item request measured at
+ * ~16 s and a ~370 MB response (REQ-24). Enforced in the API zod schema and,
+ * defensively, here for direct engine callers.
+ */
+export const PROJECTION_MAX_LINE_ITEMS = 200;
+
 /** Throughput capacity meters sized in integer units (TU / shard / PubSub capacity). */
 export const THROUGHPUT_STEP_METER_IDS = new Set([
   "eh-standard-tu",
@@ -177,6 +188,11 @@ export function projectCosts(input: ProjectCostsInput): ProjectCostsResult {
   }
 
   const lineItems = input.lineItems;
+  if (lineItems && lineItems.length > PROJECTION_MAX_LINE_ITEMS) {
+    throw new Error(
+      `lineItems length ${lineItems.length} exceeds ${PROJECTION_MAX_LINE_ITEMS}`,
+    );
+  }
   const series: ProjectionPoint[] = [];
   let cumulative = 0;
 
@@ -222,6 +238,17 @@ export function projectCosts(input: ProjectCostsInput): ProjectCostsResult {
     }
 
     cumulative += expected;
+    // Fail closed on overflow: a finite but huge input (a giant monthlyExpected
+    // or line-item amount compounded by growth) can push the product past
+    // Number.MAX_VALUE to Infinity, which JSON.stringify then serializes as
+    // `null` — a broken cost field masquerading as "no value". Never invent that;
+    // refuse it like validateRateCard refuses a non-finite price. (REQ-24)
+    if (!Number.isFinite(expected) || !Number.isFinite(cumulative)) {
+      throw new Error(
+        `projection overflow at month ${month}: cost is not finite ` +
+          `(expected=${expected}); inputs are too large to price`,
+      );
+    }
     series.push({
       month,
       expected,

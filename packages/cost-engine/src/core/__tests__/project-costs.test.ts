@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   projectCosts,
   PROJECTION_MAX_MONTHS,
+  PROJECTION_MAX_LINE_ITEMS,
   steppedCapacityMultiplier,
   volumeGrowthFactor,
 } from "../project-costs.ts";
@@ -152,5 +153,61 @@ describe("package 15/20 — projectCosts", () => {
     });
     expect(r.series[0]!.low).toBe(50);
     expect(r.series[0]!.high).toBe(200);
+  });
+
+  describe("REQ-24 — projection hardening", () => {
+    function line(amount: number) {
+      return {
+        provider: "azure",
+        capability: "auditLogs",
+        meterId: "m",
+        amount,
+        confidence: "High" as const,
+      };
+    }
+
+    it("refuses more line items than the cap (CPU/memory amplification)", () => {
+      const tooMany = Array.from({ length: PROJECTION_MAX_LINE_ITEMS + 1 }, () =>
+        line(1),
+      );
+      expect(() =>
+        projectCosts({ monthlyExpected: 100, months: 12, lineItems: tooMany }),
+      ).toThrow(/exceeds/);
+    });
+
+    it("accepts exactly the cap", () => {
+      const atCap = Array.from({ length: PROJECTION_MAX_LINE_ITEMS }, () =>
+        line(1),
+      );
+      const r = projectCosts({
+        monthlyExpected: 0,
+        months: 1,
+        lineItems: atCap,
+      });
+      expect(r.series[0]!.expected).toBe(PROJECTION_MAX_LINE_ITEMS);
+    });
+
+    it("fails closed on numeric overflow rather than emitting a non-finite cost", () => {
+      // A finite but enormous monthly value compounded by growth overflows to
+      // Infinity, which JSON.stringify would serialize as null.
+      expect(() =>
+        projectCosts({
+          monthlyExpected: 1e308,
+          months: 36,
+          annualGrowthPercent: 1e300,
+        }),
+      ).toThrow(/overflow|not finite/i);
+    });
+
+    it("fails closed when a line-item amount overflows the total", () => {
+      expect(() =>
+        projectCosts({
+          monthlyExpected: 100,
+          months: 12,
+          annualGrowthPercent: 50,
+          lineItems: [line(1e308)],
+        }),
+      ).toThrow(/overflow|not finite/i);
+    });
   });
 });
