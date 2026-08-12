@@ -159,6 +159,11 @@ export function parseAzureRetailPrices(
     );
     const hit = (baseTier.length > 0 ? baseTier : candidates)[0];
     if (!hit || hit.retailPrice === undefined) continue;
+    // TODO(REQ-22, T-22.1.2): `currencyCode ?? "USD"` assumes a missing currency
+    // is USD, so a response that omits the field is priced as dollars instead of
+    // being skipped. `filterUsdUnitPrices` calls itself "v1 fail closed to USD";
+    // this default is what makes it fail open. Same line exists in the GCP
+    // adapter — fix both together.
     raw[meterId] = {
       unitPrice: hit.retailPrice,
       currency: hit.currencyCode ?? "USD",

@@ -162,6 +162,127 @@ describe("package 04 — TEST parsers + offline + age", () => {
     expect(parsed.unitPrices["pubsub-message-delivery"]).toBeCloseTo(0.04);
   });
 
+  // REQ-22 (T-22.1.1) — a SKU that leads with a free allowance must not price at
+  // $0 for all volume. The Billing Catalog expresses "first 20GB free, then
+  // $10/GB" as tier 0 at $0 (startUsageAmount 0) and the real rate at tier 1.
+  it("prices from the first charged tier, not a free introductory tier", () => {
+    const parsed = parseGcpBillingCatalog({
+      skus: [
+        {
+          meterId: "gcs-standard-storage",
+          pricingInfo: [
+            {
+              pricingExpression: {
+                tieredRates: [
+                  { startUsageAmount: 0, unitPrice: { currencyCode: "USD" } },
+                  {
+                    startUsageAmount: 20,
+                    unitPrice: { currencyCode: "USD", units: "10", nanos: 0 },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.unitPrices["gcs-standard-storage"]).toBeCloseTo(10);
+    expect(parsed.warnings.join(" ")).toMatch(/free allowance/i);
+    expect(parsed.warnings.join(" ")).toMatch(/gcs-standard-storage/);
+  });
+
+  // EDGE, and the case that decided the shape of this fix: in the canonical
+  // proto3 JSON mapping a field at its default is *omitted*, so a genuinely free
+  // SKU and a truncated response are byte-identical. Absence therefore cannot be
+  // treated as an error — a SKU that is free at every tier stays free, silently.
+  it("keeps a SKU that is free at every tier at $0, with no warning", () => {
+    const parsed = parseGcpBillingCatalog({
+      skus: [
+        {
+          meterId: "always-free-meter",
+          pricingInfo: [
+            {
+              pricingExpression: {
+                tieredRates: [{ startUsageAmount: 0, unitPrice: { currencyCode: "USD" } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.unitPrices["always-free-meter"]).toBe(0);
+    expect(parsed.warnings.join(" ")).not.toMatch(/free allowance/i);
+  });
+
+  // EDGE: `units` is an int64 transmitted as a decimal string, so a shape change
+  // there lands as NaN. filterUsdUnitPrices drops it rather than pricing NaN.
+  it("drops a meter whose units are not numeric", () => {
+    const parsed = parseGcpBillingCatalog({
+      skus: [
+        {
+          meterId: "broken-meter",
+          pricingInfo: [
+            {
+              pricingExpression: {
+                tieredRates: [{ unitPrice: { currencyCode: "USD", units: "not-a-number" } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.unitPrices["broken-meter"]).toBeUndefined();
+  });
+
+  // EDGE: more than one free tier before the charged one.
+  it("skips several free tiers to reach the charged rate", () => {
+    const parsed = parseGcpBillingCatalog({
+      skus: [
+        {
+          meterId: "multi-free-meter",
+          pricingInfo: [
+            {
+              pricingExpression: {
+                tieredRates: [
+                  { startUsageAmount: 0, unitPrice: { currencyCode: "USD" } },
+                  { startUsageAmount: 5, unitPrice: { currencyCode: "USD", units: "0", nanos: 0 } },
+                  {
+                    startUsageAmount: 50,
+                    unitPrice: { currencyCode: "USD", units: "0", nanos: 250_000_000 },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.unitPrices["multi-free-meter"]).toBeCloseTo(0.25);
+  });
+
+  // EDGE: non-USD is still rejected after tier selection, not before it.
+  it("still fails closed to USD when the charged tier is non-USD", () => {
+    const parsed = parseGcpBillingCatalog({
+      skus: [
+        {
+          meterId: "eur-meter",
+          pricingInfo: [
+            {
+              pricingExpression: {
+                tieredRates: [
+                  { startUsageAmount: 0, unitPrice: { currencyCode: "EUR" } },
+                  { startUsageAmount: 10, unitPrice: { currencyCode: "EUR", units: "3" } },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.unitPrices["eur-meter"]).toBeUndefined();
+    expect(parsed.warnings.join(" ")).toMatch(/non-USD/);
+  });
+
   it("offline: API error → fallback, no throw", async () => {
     const fetchImpl = async () => {
       throw new Error("network down");

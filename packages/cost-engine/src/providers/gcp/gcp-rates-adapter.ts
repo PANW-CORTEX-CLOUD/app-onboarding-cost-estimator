@@ -32,7 +32,15 @@ export type GcpCatalogSku = {
   meterId?: string;
   pricingInfo?: Array<{
     pricingExpression?: {
-      tieredRates?: Array<{ unitPrice?: { currencyCode?: string; nanos?: number; units?: string } }>;
+      tieredRates?: Array<{
+        /**
+         * Usage is priced at this tier's rate only *after* this amount, so a SKU
+         * with a free allowance leads with `startUsageAmount: 0` at $0 and prices
+         * the real rate from the next tier up.
+         */
+        startUsageAmount?: number;
+        unitPrice?: { currencyCode?: string; nanos?: number; units?: string };
+      }>;
     };
   }>;
 };
@@ -75,53 +83,88 @@ export type GcpRatesAdapterOptions = {
  *
  * Reconstructs the SKU's decimal unit price from the Billing Catalog API's
  * `Money`-style `{units, nanos}` pair: `unitPrice = units + nanos / 1e9`
- * (nanos are 1e-9 fractional units, per the API's Money type), taking only
- * the first tiered rate (no volume-tier discounting modeled).
+ * (nanos are 1e-9 fractional units, per the API's Money type).
+ *
+ * Volume tiers are not modelled — each meter gets one flat rate — but the tier
+ * that rate is taken from is the first one that actually **charges**, not
+ * literally `tieredRates[0]`, so a SKU leading with a free allowance is not
+ * priced at $0 for all volume (REQ-22). Skipping a free head tier is reported
+ * in `warnings`, because it overstates small volumes.
  * @see https://cloud.google.com/billing/docs/how-to/get-pricing-information-api
  */
 export function parseGcpBillingCatalog(
   body: GcpCatalogResponse,
 ): { unitPrices: Record<string, number>; warnings: string[] } {
   const raw: Record<string, { unitPrice: number; currency: string }> = {};
+  /** Parse-time warnings, merged with the currency filter's own below. */
+  const warnings: string[] = [];
   for (const sku of body.skus ?? []) {
     const meterId = sku.meterId;
     if (!meterId) continue;
-    const tier =
-      sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice;
-    if (!tier) continue;
-    // TODO(REQ-22): BUG — this reconstruction can invent a $0 USD price from a
-    // malformed or merely unexpected upstream response, and a live $0 *overwrites*
-    // the crawler-verified fallback price in `mergeLiveOverFallback`.
+    const tiers = sku.pricingInfo?.[0]?.pricingExpression?.tieredRates;
+    if (!tiers?.length) continue;
+
+    // REQ-22 (T-22.1.1). Reading `tieredRates[0]` unconditionally prices a SKU
+    // that leads with a free allowance at $0 for *all* volume — the Billing
+    // Catalog expresses "first 20GB free, then $10/GB" as tier 0 at $0 with
+    // `startUsageAmount: 0`, then the real rate at `startUsageAmount: 20`. So the
+    // first tier is the wrong one to read whenever a later tier is priced.
     //
-    // Two escapes, both of which pass `filterUsdUnitPrices` (it rejects NaN and
-    // negatives, but 0 is finite and >= 0, and a defaulted currency reads as USD):
+    // Why not "reject a SKU whose price fields are missing", which is what this
+    // was first written up as: in the canonical proto3 JSON mapping a field at
+    // its default value is *omitted*, so a genuinely free tier and a truncated
+    // response are byte-identical on the wire — `{"currencyCode":"USD"}` either
+    // way. Absence cannot be distinguished from zero here, so this does not try;
+    // it picks the tier that actually charges instead.
+    // @see https://protobuf.dev/programming-guides/json/ (default values omitted;
+    //      int64 encoded as a decimal string, which is why `units` is a string)
     //
-    //  1. `units`/`nanos` both absent → `0 + 0` → the meter prices as free. The
-    //     Money type sends `units` as a *string* int64, so a shape change there
-    //     lands as NaN (dropped, fine) or 0 (kept, silent).
-    //  2. `tieredRates[0]` is a SKU's free introductory tier → a genuinely $0
-    //     first tier is applied flat to all volume, because only tier 0 is read.
-    //  3. `currencyCode` missing → assumed USD, so a non-USD price is priced as
-    //     USD. `filterUsdUnitPrices` is documented as "fail closed to USD"; this
-    //     default is what makes it fail open.
+    // Erring toward the paid tier is the deliberate direction: pricing a billable
+    // meter at $0 understates a customer's bill silently, while a flat paid rate
+    // overstates the free head of the curve and says so in a warning. Same choice
+    // `mergeLiveOverFallback` makes when a live price contradicts a known ladder.
     //
-    // The fix is to require the fields rather than default them: skip the SKU and
-    // warn when `units`/`nanos` are both absent or `currencyCode` is missing, and
-    // treat a $0 live price for a meter the fallback prices above zero as suspect
-    // rather than authoritative. Contradicts this repo's own stated invariants —
-    // see `core/rate-pinning.ts` ("no invented NaN/$0 silence") and
-    // `providers/rates/get-rates.ts` ("never invent $0 for missing meters").
-    //
-    // Reachable only on the live path (needs GCP_BILLING_API_KEY), which is off by
-    // default today — hence a captured bug rather than a hotfix.
-    const units = Number(tier.units ?? 0);
-    const nanos = (tier.nanos ?? 0) / 1e9;
-    raw[meterId] = {
-      unitPrice: units + nanos,
-      currency: tier.currencyCode ?? "USD",
-    };
+    // The Azure adapter reaches the same principle from the opposite mechanical
+    // direction, and the pair is worth reading together before touching either:
+    // Azure's bands are volume *discounts*, so it deliberately keeps the lowest
+    // `tierMinimumUnits` band because "picking a higher tier would understate the
+    // price a typical, non-bulk customer actually pays". GCP's tier 0 can be a
+    // free *allowance*, so keeping it is what understates. Different rule, one
+    // invariant: never let tier selection quote a customer less than they pay.
+    let chosen: { unitPrice: number; currency: string } | undefined;
+    let skippedFreeTiers = 0;
+    for (const tierRate of tiers) {
+      const money = tierRate?.unitPrice;
+      if (!money) continue;
+      // `units` is an int64-as-string; `nanos` are 1e-9 fractional units.
+      const price = Number(money.units ?? 0) + (money.nanos ?? 0) / 1e9;
+      const candidate = { unitPrice: price, currency: money.currencyCode ?? "USD" };
+      chosen ??= candidate; // keep tier 0 as the answer for an all-free SKU
+      if (price > 0) {
+        if (chosen.unitPrice === 0) {
+          chosen = candidate;
+          skippedFreeTiers += 1;
+        }
+        break;
+      }
+    }
+    if (!chosen) continue;
+    if (skippedFreeTiers > 0) {
+      warnings.push(
+        `${meterId}: skipped a $0 introductory tier and priced flat at the first charged rate (${chosen.unitPrice}); this SKU has a free allowance that v1 does not model, so small volumes are overstated`,
+      );
+    }
+    // TODO(REQ-22): T-22.1.2 still open — `currencyCode ?? "USD"` above assumes a
+    // missing currency is USD, which makes `filterUsdUnitPrices` ("v1 fail closed
+    // to USD") fail open. Under proto3 omission an absent currencyCode means the
+    // empty string, not USD, so the default is wrong in both directions.
+    raw[meterId] = chosen;
   }
-  return filterUsdUnitPrices(raw);
+  const filtered = filterUsdUnitPrices(raw);
+  return {
+    unitPrices: filtered.unitPrices,
+    warnings: [...warnings, ...filtered.warnings],
+  };
 }
 
 export function createGcpRatesAdapter(

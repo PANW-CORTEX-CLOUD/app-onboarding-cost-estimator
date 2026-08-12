@@ -1160,9 +1160,39 @@ not make the parse correct.
 
 | ID | Task | Status |
 | --- | --- | --- |
-| T-22.1.1 | Require `units`/`nanos` instead of defaulting them | `todo` |
-| T-22.1.2 | Require `currencyCode` instead of assuming USD | `todo` |
+| T-22.1.1 | ~~Require `units`/`nanos` instead of defaulting them~~ → price from the first **charged** tier | `done` |
+| T-22.1.2 | Require `currencyCode` instead of assuming USD (**GCP + Azure**) | `todo` |
 | T-22.2.1 | Treat a live $0 for a meter the fallback prices above zero as suspect | `todo` |
+| T-22.1.3 | End-to-end cover of the free-allowance SKU through `/v1/estimates` | `todo` |
+
+### Research note (2026-08-12) — this changed T-22.1.1
+
+T-22.1.1 was written as "reject a SKU whose price fields are missing". That is
+not implementable, and the edge case flagged as deciding the shape decided it
+against the original plan.
+
+In the [canonical proto3 JSON mapping](https://protobuf.dev/programming-guides/json/)
+a field at its default value is **omitted from the output**, and `int64` is
+encoded as a decimal *string*. So a genuinely free tier serialises as
+`{"currencyCode":"USD"}` — exactly what a truncated response looks like. Absence
+and an explicit zero are indistinguishable on the wire by construction, and any
+rule keyed on field presence would drop legitimately free SKUs.
+
+What *is* decidable is which tier to read. Per the
+[Billing Catalog reference](https://cloud.google.com/billing/docs/reference/rest/v1/services.skus/list),
+`TierRate.startUsageAmount` means "priced at this rate only after this amount",
+and the documented example — "first 20GB is free, the next 80GB is $10 per GB" —
+is expressed as tier 0 at $0 and the real rate at `startUsageAmount: 20`. Reading
+`tieredRates[0]` therefore priced any SKU with a free allowance at $0 for all
+volume. That is the likely, everyday form of this bug, and it needed no
+malformed response at all.
+
+Implemented instead: take the first tier that actually charges, warn that the
+free allowance is not modelled (small volumes are overstated), and leave an
+all-free SKU at $0 without a warning. Erring toward the paid rate is deliberate —
+understating a bill silently is worse than overstating it loudly, the same call
+`mergeLiveOverFallback` already makes when a live price contradicts a known
+ladder.
 
 ### UC-22.1 — A malformed catalog response must not read as a free meter
 
@@ -1171,23 +1201,33 @@ whose tiered rate is missing `units`/`nanos`, or omits `currencyCode`. The
 estimate must not quietly price that meter at $0, and must not present a
 non-USD price as USD.
 
-**T-22.1.1 — Require the price fields.** In `parseGcpBillingCatalog`, skip a SKU
-whose tier has neither `units` nor `nanos` and push a warning naming the meter,
-rather than defaulting both to 0.
+**T-22.1.1 — Price from the first charged tier.**  `done` (2026-08-12).
+`parseGcpBillingCatalog` now walks `tieredRates` and takes the first tier with a
+non-zero unit price, warning when it skipped a free head tier. `startUsageAmount`
+was added to `GcpCatalogSku` — the type previously omitted it, so the code could
+not see tier boundaries at all.
 
-- test: a SKU with `{units: "2", nanos: 500000000}` still yields `2.5`.
-- test: a SKU with an empty `unitPrice` object is skipped, and a warning names it.
-- edge: `units` as the string `"0"` with `nanos: 0` — an explicit zero from
-  upstream is *not* the same as an absent one; it is kept, and the warning is not
-  raised. This is the case that decides the shape of the fix.
-- edge: `units` as a non-numeric string yields NaN and is dropped, as today.
-- e2e: `GET /v1/estimates` with the live GCP adapter stubbed to that response
-  returns the fallback price for the meter, and the response `warnings` say the
-  live value was rejected.
+- test: `{units: "0", nanos: 40000000}` still yields `0.04` (unchanged path). ✅
+- test: free tier 0 + `$10` tier 1 → `10`, warning names the meter. ✅
+- edge: free at *every* tier → stays `0`, **no** warning — absence ≡ zero on the
+  wire, so a free SKU must survive. ✅
+- edge: two free tiers before the charged one → the charged rate wins. ✅
+- edge: `units: "not-a-number"` → NaN, dropped by `filterUsdUnitPrices`. ✅
+- edge: non-USD charged tier → still rejected *after* tier selection. ✅
+- e2e: still owed — `GET /v1/estimates` with the live GCP adapter stubbed to a
+  free-allowance SKU should show the charged rate and surface the warning. Not
+  written yet; the live path needs `GCP_BILLING_API_KEY`, so it needs an adapter
+  seam in the API test harness. Tracked as T-22.1.3.
 
 **T-22.1.2 — Require the currency.** Treat a missing `currencyCode` as
 not-USD: skip the row and count it in the existing `skipped … non-USD` warning
 instead of defaulting to `"USD"`.
+
+Applies to **both** live adapters — `gcp-rates-adapter.ts` and
+`azure-rates-adapter.ts` carry the identical `hit.currencyCode ?? "USD"` line
+(found 2026-08-12 while fixing T-22.1.1). Fix them together; a marker sits at
+each site. Under proto3 omission an absent `currencyCode` means the empty
+string, not USD, so the default is wrong in both directions.
 
 - test: a row with no `currencyCode` is skipped and counted.
 - test: `currencyCode: "EUR"` is skipped, as today.
