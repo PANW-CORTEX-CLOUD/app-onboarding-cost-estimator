@@ -217,6 +217,30 @@ describe("stop hook — inputs and robustness", () => {
     assert.equal(readState(), null, "a stand-down must not advance the loop");
   });
 
+  it("emits the whole blocking payload without truncation", () => {
+    // The reason carries the entire loop prompt (~9 KB). stdout to a pipe can flush
+    // asynchronously, so an exit that does not wait would cut the JSON in half and Claude
+    // Code would see a malformed hook result rather than a decision.
+    const out = runHook({ last_assistant_message: finalMessage("CONTINUE — big payload") });
+    assert.equal(out.decision, "block");
+    assert.ok(out.reason.length > 8000, `reason was only ${out.reason.length} bytes`);
+    assert.match(
+      out.reason.trimEnd(),
+      /is a valid, useful outcome\.$/,
+      "the reason must end with the prompt's own last line, not mid-stream"
+    );
+  });
+
+  it("re-prompts twice in a row when the turn yields no message at all", () => {
+    // Two message-less turns hash identically, so a naive per-turn claim would treat the
+    // second as a duplicate and let the session stop instead of re-prompting.
+    const first = runHook({});
+    assert.equal(first.decision, "block");
+    const second = runHook({});
+    assert.equal(second.decision, "block", "the second empty turn must still be re-prompted");
+    assert.equal(readState().missingMarkerStreak, 2);
+  });
+
   it("counts a turn once even when the hook is registered twice", () => {
     const payload = { last_assistant_message: finalMessage("CONTINUE — only once") };
     assert.equal(runHook(payload).decision, "block");
@@ -325,78 +349,5 @@ describe("loop-ctl CLI", () => {
   it("exits non-zero on an unknown subcommand", () => {
     assert.equal(ctl(["frobnicate"]).status, 1);
     assert.equal(ctl(["--help"]).status, 0);
-  });
-});
-
-describe("install-global", () => {
-  it("installs the skill and registers exactly one Stop hook, idempotently", () => {
-    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-home-"));
-    /**
-     * @param {string[]} args Installer arguments.
-     * @returns {import("node:child_process").SpawnSyncReturns<string>} Result.
-     */
-    const install = (args) =>
-      spawnSync(
-        process.execPath,
-        [path.join(SKILL_DIR, "bin", "install-global.mjs"), "--home", fakeHome, ...args],
-        { encoding: "utf8" }
-      );
-    const settingsFile = path.join(fakeHome, ".claude", "settings.json");
-    /** @returns {any} Parsed settings. */
-    const settings = () => JSON.parse(fs.readFileSync(settingsFile, "utf8"));
-    /**
-     * @param {any} s Settings object.
-     * @returns {any[]} Every Stop hook handler.
-     */
-    const stopHooks = (s) => (s.hooks?.Stop ?? []).flatMap((g) => g.hooks ?? []);
-
-    try {
-      assert.equal(install([]).status, 0);
-      const target = path.join(fakeHome, ".claude", "skills", "continuous-improvement");
-      assert.ok(fs.existsSync(path.join(target, "SKILL.md")));
-      assert.ok(fs.existsSync(path.join(target, "hooks", "stop.mjs")));
-      assert.ok(fs.existsSync(path.join(target, "LOOP_PROMPT.md")));
-      assert.ok(
-        fs.existsSync(path.join(target, "tests", "stop-hook.test.mjs")),
-        "the install must carry its own tests — it is the only copy of the skill"
-      );
-      assert.equal(stopHooks(settings()).length, 1);
-
-      assert.equal(install([]).status, 0);
-      assert.equal(stopHooks(settings()).length, 1, "re-install must not duplicate the hook");
-
-      // A pre-existing unrelated hook must survive install and uninstall.
-      const existing = settings();
-      existing.hooks.Stop.push({ hooks: [{ type: "command", command: "echo unrelated" }] });
-      fs.writeFileSync(settingsFile, JSON.stringify(existing, null, 2), "utf8");
-      assert.equal(install([]).status, 0);
-      assert.equal(stopHooks(settings()).length, 2);
-
-      assert.equal(install(["--uninstall"]).status, 0);
-      assert.equal(fs.existsSync(target), false);
-      const after = stopHooks(settings());
-      assert.equal(after.length, 1);
-      assert.equal(after[0].command, "echo unrelated");
-    } finally {
-      fs.rmSync(fakeHome, { recursive: true, force: true });
-    }
-  });
-
-  it("refuses to touch a settings.json it cannot parse", () => {
-    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-home-"));
-    try {
-      fs.mkdirSync(path.join(fakeHome, ".claude"), { recursive: true });
-      fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), "{ broken", "utf8");
-      const result = spawnSync(
-        process.execPath,
-        [path.join(SKILL_DIR, "bin", "install-global.mjs"), "--home", fakeHome],
-        { encoding: "utf8" }
-      );
-      assert.equal(result.status, 1);
-      assert.match(result.stderr, /not valid JSON/);
-      assert.equal(fs.readFileSync(path.join(fakeHome, ".claude", "settings.json"), "utf8"), "{ broken");
-    } finally {
-      fs.rmSync(fakeHome, { recursive: true, force: true });
-    }
   });
 });

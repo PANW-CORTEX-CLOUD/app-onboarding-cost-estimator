@@ -180,7 +180,7 @@ prompt, so an `INVESTIGATE` turn gets a checklist rather than a mood.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Turn ends and nothing continues | Loop not armed | `loop-ctl.mjs status`; if `armed: no`, run `enable`. |
-| Hook never runs | Not registered | Check `.claude/settings.json` (project) or `~/.claude/settings.json` (global); `install-global.mjs` re-registers. |
+| Hook never runs | Not registered | Check `~/.claude/settings.json` for a Stop entry pointing at this skill; re-run the repo installer to re-register. |
 | "Turn ended without a LOOP CONTROL block" | The `NEXT-STEP:` line was missing or not last | Put the control block last, with the trigger line as the final non-empty line. |
 | Loop stopped early | `COMPLETE`, `BLOCKED`, iteration cap, or a stand-down `stop_reason` | `loop-ctl.mjs journal -n 5` shows the exact `reasonCode`. |
 | Loop will not stop | Sentinel still present | `loop-ctl.mjs disable`, or `CONTINUOUS_IMPROVEMENT_DISABLE=1`, or delete `.claude/continuous-improvement.active`. |

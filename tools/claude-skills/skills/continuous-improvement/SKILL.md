@@ -113,16 +113,16 @@ Full catalogue with per-angle checklists: [`REFERENCE.md`](REFERENCE.md) and
   `CONTINUOUS_IMPROVEMENT_DISABLE=1` stops it. A user message during a loop is a normal
   turn — answer it, and it still ends with a control block.
 
-## Install for every project
+## Install
+
+This skill lives in the `code-claude-skills` repository and is installed from there:
 
 ```bash
-node ${CLAUDE_SKILL_DIR}/bin/install-global.mjs             # → ~/.claude, all projects
-node ${CLAUDE_SKILL_DIR}/bin/install-global.mjs --dry-run
-node ${CLAUDE_SKILL_DIR}/bin/install-global.mjs --uninstall
+bash tools/skill-installer/install.sh continuous-improvement
 ```
 
-This copies the skill to `~/.claude/skills/continuous-improvement` and registers the Stop
-hook in `~/.claude/settings.json`. It arms nothing.
+That copies it to `~/.claude/skills/continuous-improvement` and registers the `Stop` hook
+declared in [`skill.json`](skill.json). It arms nothing.
 
 ## Files
 
@@ -134,5 +134,5 @@ hook in `~/.claude/settings.json`. It arms nothing.
 | `lib/loop-control.mjs` | Parsing + state machine + follow-up rendering (pure, tested). |
 | `lib/angles.mjs` | Investigation angle catalogue. |
 | `bin/loop-ctl.mjs` | enable / disable / status / angles / journal. |
-| `bin/install-global.mjs` | Global install into `~/.claude`. |
+| `skill.json` | Install manifest: the `Stop` hook the repo installer registers. |
 | `tests/` | `node --test` coverage for the parser, state machine and hook. |
