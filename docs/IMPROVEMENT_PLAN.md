@@ -59,6 +59,7 @@ to find one.
 | [REQ-17](#req-17--an-unexpected-error-must-not-leak-its-raw-message-to-the-client) | An unexpected error must not leak its raw message to the client | `done` |
 | [REQ-18](#req-18--a-persisted-blob-must-not-be-trusted-just-because-it-parses) | A persisted blob must not be trusted just because it parses | `done` |
 | [REQ-19](#req-19--a-request-field-must-not-be-inert) | A request field must not be inert | `done` |
+| [REQ-20](#req-20--a-customer-can-price-from-a-spreadsheet-they-fill-in) | A customer can price from a spreadsheet they fill in | `done` |
 
 ---
 
@@ -877,6 +878,41 @@ same meter independently, so laddering each in isolation would understate the
 blended rate; a flat first-tier price is the conservative choice for a
 Low-confidence line, stated rather than silently applied.
 
+## REQ-20 — A customer can price from a spreadsheet they fill in  `done`
+
+An SE or customer often has the estate numbers in a spreadsheet before they ever
+open the tool. They should be able to hand those numbers over as a file and get a
+cost, without clicking through the estimator field by field. The inputs CSV
+import/export already existed (`estimatorInputsCsv.ts`, `InputsCsvPanel`), but it
+could only *export the current UI state* — a customer starting from nothing had
+no blank, valid file to fill in.
+
+### UC-20.1 — A customer fills a template in Excel, uploads it, and sees the cost
+
+- **T-20.1.1** `done` `customerPlanTemplateCsv()` emits a complete, valid,
+  example-filled plan file (Azure audit + DSPM over ~1 TB) generated from the
+  same key lists the parser validates against, so it can never drift out of sync
+  with what import accepts. A **Download plan template** button in
+  `InputsCsvPanel` produces it with no dependence on current state. Excel opens
+  and saves `.csv` natively, so a binary `.xlsx` parser (a third-party dependency
+  + supply-chain surface) is deliberately not required.
+  *Tests* (`estimator-inputs-csv.test.tsx`): the template parses cleanly to a
+  valid state; a customer edit (flip DSPM off, enable registry, change counts) is
+  reflected after import; the panel shows the button. **e2e (engine)**: the
+  unedited template parses → prices to **$91.20** across 5 vendor-backed lines,
+  proving the whole upload→cost chain.
+- **T-20.1.2** `done` The parser now ignores whole-line `#` comments (dropped
+  before the `key,value` header check), so the template carries its own
+  instructions and section headers the customer never has to delete. Trailing
+  `#` on a data row is intentionally *not* a comment (it would be read into the
+  value), so `key,value` rows stay comment-free. Unknown keys are still rejected
+  (a typo surfaces, never silently changes the quote).
+  *Tests*: comment lines are ignored on import; an interspersed comment in a
+  hand-authored file parses; **edge** a bad value in an otherwise-good template
+  still fails closed.
+- **Docs**: `docs/CUSTOMER_PLAN_FILE.md` — how-to, format rules, and a full field
+  reference (units, which capability each volume field sizes).
+
 ---
 
 ## Sweep record
@@ -936,7 +972,7 @@ commitments. Each notes what would have to be true to make it worth doing.
 | --- | --- | --- |
 | Bill-back calibration | The repo already ingests billing CSVs. Comparing a past estimate against the actual invoice for the same period turns every quote into a data point that tunes the model. | A handful of customers share invoices. |
 | Automated ledger PRs | The crawler can already detect drift; having it open a PR when a vendor changes a price makes correctness a background process rather than a chore. | Write access and CI scheduling exist. |
-| Terraform plan ingestion | Today the manifest is derived from the connector TF in this repo. Reading a customer's actual `terraform plan -json` would ground the estimate in *their* deployment, not the template. | Customers will share a plan file. |
+| Terraform plan ingestion | Today the manifest is derived from the connector TF in this repo. Reading a customer's actual `terraform plan -json` would ground the estimate in *their* deployment, not the template. | Customers will share a plan file. — **Partly addressed (2026-08-12):** the customer-data-ingestion path now exists as a **spreadsheet plan file** (REQ-20: download template → fill in Excel → upload → cost). Ingesting a real `terraform plan -json` (mapping resources → capabilities/volumes automatically) remains a separate, larger item — it needs a decision on which TF resource shapes map to which drivers. |
 | Multi-region estates | Everything is single-region. Real estates span regions with different rates and inter-region transfer between them. | Someone asks for a number we currently cannot give. |
 
 ## Long term (quarters) — change what the tool is

@@ -206,6 +206,84 @@ export function exportEstimatorInputsCsv(state: EstimatorInputsState): string {
   return lines.join("\n") + "\n";
 }
 
+/**
+ * A blank, self-documenting **customer plan file**: a complete, valid inputs CSV
+ * pre-filled with a realistic example, that a customer can open in Excel, edit,
+ * and upload to get a cost — without first configuring the tool.
+ *
+ * Unlike {@link exportEstimatorInputsCsv} (which snapshots the *current* UI
+ * state), this needs no state: it emits every key the parser requires with a
+ * sensible example value, plus `#` comment lines that explain each section. The
+ * comments are ignored on import (whole-line `#…`), so the customer never has to
+ * strip them. Editing the example numbers and re-uploading is the whole flow.
+ *
+ * The example prices a real estate (Azure audit logs + DSPM over ~1 TB) so an
+ * unedited upload already shows a non-zero cost — a live demonstration of the
+ * round trip. Keys are generated from the same lists the parser validates
+ * against, so the template can never drift out of sync with what import accepts.
+ */
+export function customerPlanTemplateCsv(): string {
+  // Example values, keyed to match the parser exactly. Numbers a customer edits.
+  const capabilityExample: Record<(typeof CAPABILITY_KEYS)[number], string> = {
+    discovery: "false",
+    auditLogs: "true",
+    adsCloud: "false",
+    adsOutpost: "false",
+    dspm: "true",
+    registry: "false",
+    serverless: "false",
+    egress: "false",
+  };
+  const volumeExample: Record<(typeof VOLUME_NUMBER_KEYS)[number], string> = {
+    accountCount: "25",
+    monthlyActiveUsers: "0",
+    ingressGBPerDay: "10",
+    peakMBps: "1",
+    peakEventsPerSec: "1000",
+    dataEstateGB: "1024",
+    pctScanned: "100",
+    scansPerMonth: "30",
+    imageCount: "0",
+    avgImageGB: "0",
+    packageCount: "0",
+    egressGB: "0",
+    vmCount: "0",
+    avgUsedDiskGB: "0",
+  };
+  const assumptionExample: Record<(typeof ASSUMPTION_NUMBER_KEYS)[number], string> = {
+    monthHours: "730",
+    assumedEventBytes: "1024",
+    avgStoredGB: "100",
+  };
+
+  const L: string[] = [];
+  L.push("# Cortex Cloud onboarding — customer cost plan");
+  L.push("# HOW TO USE: edit the value after each comma, save, then upload this");
+  L.push("#   file in the estimator (Inputs -> Import inputs CSV). Lines starting");
+  L.push("#   with # are comments and are ignored. Do not rename the keys.");
+  L.push("#   Full field reference: docs/CUSTOMER_PLAN_FILE.md");
+  L.push("key,value");
+  L.push(`format,${INPUTS_CSV_FORMAT}`);
+  L.push(`formatVersion,${INPUTS_CSV_FORMAT_VERSION}`);
+  L.push("# --- Cloud + region (provider: azure | aws | gcp) ---");
+  L.push("provider,azure");
+  L.push("region,eastus");
+  L.push("# --- Capabilities to price (true or false) ---");
+  for (const k of CAPABILITY_KEYS) L.push(`capability.${k},${capabilityExample[k]}`);
+  L.push("# --- Volume (whole numbers; 0 if not applicable) ---");
+  L.push("# overrideStreamMetrics=false lets the tool derive audit stream volume");
+  L.push("#   from accountCount; set true to pin ingress/peak yourself.");
+  L.push("volume.overrideStreamMetrics,false");
+  L.push("# crossRegionPull=true only if registry image pulls cross a region.");
+  L.push("volume.crossRegionPull,false");
+  for (const k of VOLUME_NUMBER_KEYS) L.push(`volume.${k},${volumeExample[k]}`);
+  L.push("# --- Assumptions (defaults are sensible; change only if you know why) ---");
+  L.push("# logIntensity: low | medium | high");
+  L.push("assumption.logIntensity,medium");
+  for (const k of ASSUMPTION_NUMBER_KEYS) L.push(`assumption.${k},${assumptionExample[k]}`);
+  return L.join("\n") + "\n";
+}
+
 function detectForeignCsv(headerLine: string, errors: string[]): boolean {
   const headers = splitCsvLine(headerLine).map((h) => h.toLowerCase());
   const joined = headers.join("|");
@@ -251,7 +329,14 @@ export function parseEstimatorInputsCsv(
     return { ok: false, errors: ["Empty CSV"] };
   }
 
-  const lines = normalized.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  // Drop blank lines and whole-line `#…` comments up front, so a customer
+  // template can carry instructions and section headers anywhere — including
+  // above the `key,value` header — that the customer never has to delete. Only
+  // whole-line comments: a trailing `#` on a data row would be parsed into the
+  // value, so `key,value` rows themselves stay comment-free.
+  const lines = normalized
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0 && !l.trim().startsWith("#"));
   if (lines.length < 2) {
     return { ok: false, errors: ["CSV must have header and at least one data row"] };
   }

@@ -7,6 +7,7 @@ import {
   INPUTS_CSV_FORMAT,
   INPUTS_CSV_FORMAT_VERSION,
   INPUTS_CSV_MAX_BYTES,
+  customerPlanTemplateCsv,
   exportEstimatorInputsCsv,
   parseEstimatorInputsCsv,
   type EstimatorInputsState,
@@ -211,5 +212,88 @@ describe("[01/01][EDGE] fail-closed parsers", () => {
       expect(screen.getByTestId("inputs-csv-errors")).toBeInTheDocument();
     });
     expect(onImport).not.toHaveBeenCalled();
+  });
+});
+
+describe("REQ-20 — customer plan-file template", () => {
+  it("the template parses cleanly into a valid state (no errors)", () => {
+    const csv = customerPlanTemplateCsv();
+    const parsed = parseEstimatorInputsCsv(csv);
+    expect(parsed.ok, parsed.ok ? "" : parsed.errors.join("; ")).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.state.provider).toBe("azure");
+    expect(parsed.state.region).toBe("eastus");
+    // The example prices a real estate so an unedited upload shows a cost.
+    expect(parsed.state.capabilities.auditLogs).toBe(true);
+    expect(parsed.state.capabilities.dspm).toBe(true);
+    expect(parsed.state.volume.dataEstateGB).toBeGreaterThan(0);
+  });
+
+  it("carries # comment lines that the parser ignores", () => {
+    const csv = customerPlanTemplateCsv();
+    expect(csv).toMatch(/^# /m); // has comment lines
+    expect(csv).toMatch(/docs\/CUSTOMER_PLAN_FILE\.md/); // points to the spec
+    // Round-trip: comments do not leak into any parsed key.
+    const parsed = parseEstimatorInputsCsv(csv);
+    expect(parsed.ok).toBe(true);
+  });
+
+  it("EDGE: a customer edit (capabilities + numbers) is reflected after import", () => {
+    // Simulate the real flow: customer opens the template, flips DSPM off and
+    // enables registry, changes accountCount and image inputs.
+    const edited = customerPlanTemplateCsv()
+      .replace("capability.dspm,true", "capability.dspm,false")
+      .replace("capability.registry,false", "capability.registry,true")
+      .replace("volume.accountCount,25", "volume.accountCount,120")
+      .replace("volume.imageCount,0", "volume.imageCount,500")
+      .replace("volume.avgImageGB,0", "volume.avgImageGB,0.4");
+    const parsed = parseEstimatorInputsCsv(edited);
+    expect(parsed.ok, parsed.ok ? "" : parsed.errors.join("; ")).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.state.capabilities.dspm).toBe(false);
+    expect(parsed.state.capabilities.registry).toBe(true);
+    expect(parsed.state.volume.accountCount).toBe(120);
+    expect(parsed.state.volume.imageCount).toBe(500);
+    expect(parsed.state.volume.avgImageGB).toBeCloseTo(0.4, 5);
+  });
+
+  it("EDGE: an interspersed comment line does not break a hand-authored file", () => {
+    const csv = [
+      "key,value",
+      `format,${INPUTS_CSV_FORMAT}`,
+      `formatVersion,${INPUTS_CSV_FORMAT_VERSION}`,
+      "# a stray comment in the middle",
+      "provider,aws",
+      "region,us-east-1",
+      "capability.auditLogs,true",
+      "volume.accountCount,10",
+      "volume.ingressGBPerDay,5",
+      "volume.peakMBps,1",
+      "volume.peakEventsPerSec,500",
+      "volume.overrideStreamMetrics,false",
+      "assumption.monthHours,730",
+      "assumption.assumedEventBytes,1024",
+      "assumption.avgStoredGB,50",
+      "assumption.logIntensity,low",
+    ].join("\n");
+    const parsed = parseEstimatorInputsCsv(csv);
+    expect(parsed.ok, parsed.ok ? "" : parsed.errors.join("; ")).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.state.provider).toBe("aws");
+  });
+
+  it("EDGE: a bad value in an otherwise-good template still fails closed", () => {
+    const broken = customerPlanTemplateCsv().replace(
+      "volume.accountCount,25",
+      "volume.accountCount,-5",
+    );
+    const parsed = parseEstimatorInputsCsv(broken);
+    expect(parsed.ok).toBe(false);
+  });
+
+  it("the panel offers a Download plan template button", () => {
+    const getState = (): EstimatorInputsState => sample;
+    render(<InputsCsvPanel getState={getState} onImport={vi.fn()} />);
+    expect(screen.getByTestId("download-plan-template")).toBeInTheDocument();
   });
 });

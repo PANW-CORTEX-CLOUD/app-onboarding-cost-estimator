@@ -4,6 +4,7 @@
  */
 import { useRef, useState } from "react";
 import {
+  customerPlanTemplateCsv,
   exportEstimatorInputsCsv,
   parseEstimatorInputsCsv,
   type EstimatorInputsState,
@@ -33,6 +34,21 @@ export function InputsCsvPanel({ getState, onImport }: InputsCsvPanelProps) {
     setStatus("Downloaded inputs CSV");
   }
 
+  /**
+   * Download a blank, self-documenting customer plan file. Unlike the export
+   * above it does not snapshot current state — a customer starting from nothing
+   * gets a complete, valid, example-filled template to edit in Excel and upload.
+   */
+  function onDownloadTemplate() {
+    setErrors([]);
+    setStatus(null);
+    downloadBlob(
+      "cortex-cost-plan-template.csv",
+      new Blob([customerPlanTemplateCsv()], { type: "text/csv;charset=utf-8" }),
+    );
+    setStatus("Downloaded plan template — fill it in Excel, then Import");
+  }
+
   function onFile(file: File | null) {
     setErrors([]);
     setStatus(null);
@@ -60,10 +76,18 @@ export function InputsCsvPanel({ getState, onImport }: InputsCsvPanelProps) {
   return (
     <div data-testid="inputs-csv-panel" className="inputs-csv-panel">
       <p className="field-hint">
-        Spreadsheet edit of inputs (not results line-item $). Re-import refreshes
-        the estimate.
+        Spreadsheet edit of inputs (not results line-item $). Fill the template in
+        Excel and import it to get a cost, or export your current inputs to edit.
+        Re-import refreshes the estimate.
       </p>
       <p className="export-actions">
+        <button
+          type="button"
+          data-testid="download-plan-template"
+          onClick={onDownloadTemplate}
+        >
+          Download plan template
+        </button>
         <button
           type="button"
           data-testid="download-inputs-csv"
