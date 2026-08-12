@@ -205,6 +205,13 @@ export function filterUsdUnitPrices(
       skippedNonUsd += 1;
       continue;
     }
+    // TODO(REQ-22): this guard rejects NaN and negatives but accepts 0, and its
+    // callers can produce a 0 by defaulting absent fields (see the BUG note in
+    // `providers/gcp/gcp-rates-adapter.ts`). A live 0 then overwrites a verified
+    // fallback price in `mergeLiveOverFallback`, so a malformed upstream response
+    // reads as "this meter is free" rather than as a failure. Decide here whether
+    // a zero unit price is ever legitimate for a *billable* meter; if not, drop it
+    // with a warning like the non-USD rows above.
     if (!Number.isFinite(row.unitPrice) || row.unitPrice < 0) continue;
     unitPrices[meterId] = row.unitPrice;
   }

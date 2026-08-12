@@ -61,6 +61,7 @@ to find one.
 | [REQ-19](#req-19--a-request-field-must-not-be-inert) | A request field must not be inert | `done` |
 | [REQ-20](#req-20--an-error-must-name-whose-fault-it-is) | An error must name whose fault it is | `done` |
 | [REQ-21](#req-21--a-customer-can-price-from-a-spreadsheet-they-fill-in) | A customer can price from a spreadsheet they fill in | `done` |
+| [REQ-22](#req-22--a-live-rate-lookup-may-never-silently-price-a-billable-meter-at-0) | A live rate lookup may never silently price a billable meter at $0 | `todo` |
 
 ---
 
@@ -1085,3 +1086,85 @@ been carried out.
 | `capabilityForAffectsField` | `shared/model/tf-grounding.ts` | Zero references anywhere, including within its own file. `shared/lib/affects-chips.ts` (a later addition per its own package-number comment) independently reimplements the same "which volume field maps to which capability/meters" concept with its own field list. The constant it reads (`AUDIT_AFFECTS_FIELD_IDS`) is still used elsewhere — only the function itself is dead. | **DELETE.** High confidence — superseded by `affects-chips.ts`, zero references, the one thing it reads is used elsewhere so nothing else breaks. |
 | `CAPABILITY_LABELS` | `widgets/CapabilityToggles/CapabilityToggles.tsx` | Already carries an `@deprecated` tag ("Prefer `capabilityLabel()` — kept for callers expecting short names"), but an export-usage cross-reference across all three packages + `apps/web` finds **zero callers** — the migration it was left as a bridge for is complete. It only calls `capabilityLabel()` per key, so deleting it removes a table nothing reads. | **DELETE.** High confidence — self-declared deprecated, zero references. Found in the 2026-08-11 back-compat sweep. |
 | `DeprecatedForce` query param | `openapi/openapi.yaml` (`/rates/refresh`) → generated `openapi.types.ts` | A `deprecated: true` query parameter documented as a "Deprecated no-op; use body.forceLive". The route reads `forceLive` from the JSON body; the query param does nothing, and no client (`apps/web` or tests) ever sends it. A pure backward-compat husk in the API contract with no senders to break. | **DELETE** from `openapi.yaml` and regenerate types — or keep only if an external (non-`apps/web`) client is known to still pass it, which nothing in-repo does. Found in the 2026-08-11 back-compat sweep. |
+
+## REQ-22 — A live rate lookup may never silently price a billable meter at $0  `todo`
+
+Found by the fail-open/silent-fallback sweep (2026-08-12). The GCP live adapter
+reconstructs a SKU's price from the Billing Catalog `Money` pair with
+`Number(tier.units ?? 0)` and `(tier.nanos ?? 0) / 1e9`, and defaults a missing
+`currencyCode` to `"USD"`. Every one of those defaults turns "the upstream
+response was not what we expected" into a confident number.
+
+`filterUsdUnitPrices` catches NaN and negatives, so the surviving escapes are:
+
+1. `units` and `nanos` both absent → `0 + 0 = 0`, which is finite and
+   non-negative, so it is kept as a real price.
+2. Only `tieredRates[0]` is read, so a SKU whose **first tier is free** prices
+   flat at $0 for all volume.
+3. A missing `currencyCode` is assumed USD and passes the USD filter — the
+   filter is documented as "v1 fail closed to USD", and this default is exactly
+   what makes it fail open.
+
+The damage is done downstream: `mergeLiveOverFallback` prefers the live price
+(`live ?? meter.unitPrice`), so a bad live 0 **overwrites** the crawler-verified
+fallback that `pnpm rates:validate` exists to guarantee. The estimate total drops
+and nothing in the response says why. This contradicts the invariant the rest of
+the engine states explicitly — `core/rate-pinning.ts` ("no invented NaN/$0
+silence") and `providers/rates/get-rates.ts` ("never invent $0 for missing
+meters").
+
+Reachable only when `GCP_BILLING_API_KEY` is set, which is off by default, so
+today's shipped path is the fallback file. That bounds the blast radius; it does
+not make the parse correct.
+
+| ID | Task | Status |
+| --- | --- | --- |
+| T-22.1.1 | Require `units`/`nanos` instead of defaulting them | `todo` |
+| T-22.1.2 | Require `currencyCode` instead of assuming USD | `todo` |
+| T-22.2.1 | Treat a live $0 for a meter the fallback prices above zero as suspect | `todo` |
+
+### UC-22.1 — A malformed catalog response must not read as a free meter
+
+An operator sets `GCP_BILLING_API_KEY` and the Billing Catalog returns a SKU
+whose tiered rate is missing `units`/`nanos`, or omits `currencyCode`. The
+estimate must not quietly price that meter at $0, and must not present a
+non-USD price as USD.
+
+**T-22.1.1 — Require the price fields.** In `parseGcpBillingCatalog`, skip a SKU
+whose tier has neither `units` nor `nanos` and push a warning naming the meter,
+rather than defaulting both to 0.
+
+- test: a SKU with `{units: "2", nanos: 500000000}` still yields `2.5`.
+- test: a SKU with an empty `unitPrice` object is skipped, and a warning names it.
+- edge: `units` as the string `"0"` with `nanos: 0` — an explicit zero from
+  upstream is *not* the same as an absent one; it is kept, and the warning is not
+  raised. This is the case that decides the shape of the fix.
+- edge: `units` as a non-numeric string yields NaN and is dropped, as today.
+- e2e: `GET /v1/estimates` with the live GCP adapter stubbed to that response
+  returns the fallback price for the meter, and the response `warnings` say the
+  live value was rejected.
+
+**T-22.1.2 — Require the currency.** Treat a missing `currencyCode` as
+not-USD: skip the row and count it in the existing `skipped … non-USD` warning
+instead of defaulting to `"USD"`.
+
+- test: a row with no `currencyCode` is skipped and counted.
+- test: `currencyCode: "EUR"` is skipped, as today.
+- edge: `currencyCode: "usd"` (lower case) — decide explicitly whether to
+  normalise or reject; today it is rejected by the strict `!== "USD"` compare.
+- e2e: an all-non-USD catalog response leaves every price at its fallback value
+  and the estimate still returns, with warnings.
+
+### UC-22.2 — A live zero must never silently replace a verified price
+
+**T-22.2.1 — Guard the merge.** In `mergeLiveOverFallback`, when a live price is
+`0` and the recorded fallback price is greater than `0`, keep the fallback and
+warn (same shape as the existing tier-drift warning) rather than accepting the
+zero. A meter that is genuinely free should be recorded as free in the fallback
+document by `pnpm rates:validate`, not discovered at request time.
+
+- test: live `0` + fallback `0.028` → fallback wins, warning names the meter.
+- test: live `0.03` + fallback `0.028` → live wins, as today.
+- edge: live `0` + fallback `0` → no warning; the document already says free.
+- e2e: an estimate whose live query returns 0 for one billable meter keeps its
+  total and carries the warning, instead of dropping the line item to $0.

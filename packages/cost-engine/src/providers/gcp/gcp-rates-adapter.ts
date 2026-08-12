@@ -89,6 +89,31 @@ export function parseGcpBillingCatalog(
     const tier =
       sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice;
     if (!tier) continue;
+    // TODO(REQ-22): BUG — this reconstruction can invent a $0 USD price from a
+    // malformed or merely unexpected upstream response, and a live $0 *overwrites*
+    // the crawler-verified fallback price in `mergeLiveOverFallback`.
+    //
+    // Two escapes, both of which pass `filterUsdUnitPrices` (it rejects NaN and
+    // negatives, but 0 is finite and >= 0, and a defaulted currency reads as USD):
+    //
+    //  1. `units`/`nanos` both absent → `0 + 0` → the meter prices as free. The
+    //     Money type sends `units` as a *string* int64, so a shape change there
+    //     lands as NaN (dropped, fine) or 0 (kept, silent).
+    //  2. `tieredRates[0]` is a SKU's free introductory tier → a genuinely $0
+    //     first tier is applied flat to all volume, because only tier 0 is read.
+    //  3. `currencyCode` missing → assumed USD, so a non-USD price is priced as
+    //     USD. `filterUsdUnitPrices` is documented as "fail closed to USD"; this
+    //     default is what makes it fail open.
+    //
+    // The fix is to require the fields rather than default them: skip the SKU and
+    // warn when `units`/`nanos` are both absent or `currencyCode` is missing, and
+    // treat a $0 live price for a meter the fallback prices above zero as suspect
+    // rather than authoritative. Contradicts this repo's own stated invariants —
+    // see `core/rate-pinning.ts` ("no invented NaN/$0 silence") and
+    // `providers/rates/get-rates.ts` ("never invent $0 for missing meters").
+    //
+    // Reachable only on the live path (needs GCP_BILLING_API_KEY), which is off by
+    // default today — hence a captured bug rather than a hotfix.
     const units = Number(tier.units ?? 0);
     const nanos = (tier.nanos ?? 0) / 1e9;
     raw[meterId] = {
