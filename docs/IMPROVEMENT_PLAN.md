@@ -1173,7 +1173,7 @@ not make the parse correct.
 | T-23.1.1 | ~~Require `units`/`nanos` instead of defaulting them~~ → price from the first **charged** tier | `done` |
 | T-23.1.2 | Require `currencyCode` instead of assuming USD (**GCP + Azure**) | `done` |
 | T-23.2.1 | Treat a live $0 for a meter the fallback prices above zero as suspect | `done` |
-| T-23.1.3 | End-to-end cover of the free-allowance SKU through `/v1/estimates` | `todo` |
+| T-23.1.3 | End-to-end cover of the free-allowance SKU through `/v1/estimates` | `done` |
 | T-23.3.1 | Make requirement-ID claiming survive concurrent branches | `todo` |
 
 ### Research note (2026-08-12) — this changed T-23.1.1
@@ -1225,10 +1225,8 @@ not see tier boundaries at all.
 - edge: two free tiers before the charged one → the charged rate wins. ✅
 - edge: `units: "not-a-number"` → NaN, dropped by `filterUsdUnitPrices`. ✅
 - edge: non-USD charged tier → still rejected *after* tier selection. ✅
-- e2e: still owed — `GET /v1/estimates` with the live GCP adapter stubbed to a
-  free-allowance SKU should show the charged rate and surface the warning. Not
-  written yet; the live path needs `GCP_BILLING_API_KEY`, so it needs an adapter
-  seam in the API test harness. Tracked as T-23.1.3.
+- e2e: `packages/api/src/__tests__/live-zero-price-e2e.test.ts` drives the live
+  path over HTTP and asserts the charged rate reaches the response. ✅ (T-23.1.3)
 
 **T-23.1.2 — Require the currency.** Treat a missing `currencyCode` as
 not-USD: skip the row and count it in the existing `skipped … non-USD` warning
@@ -1261,7 +1259,7 @@ never USD.
   `!== "USD"` compare. Left deliberately strict: neither API is documented to
   vary the case, so accepting a variant would be guessing at a payload we have
   not seen. Noted here rather than silently normalised.
-- e2e: still owed with T-23.1.3 — same missing adapter seam.
+- e2e: covered by `live-zero-price-e2e.test.ts` (T-23.1.3). ✅
 
 ### UC-22.2 — A live zero must never silently replace a verified price
 
@@ -1292,7 +1290,7 @@ recoverable; silently zeroing a billable line is not.
 - edge: a live meter the document never recorded is still accepted at face value,
   including a zero — the guard works by contradiction and there is nothing to
   contradict. Documented at the site as an absence of basis, not a judgement.
-- e2e: still owed with T-23.1.3 — same missing adapter seam.
+- e2e: covered by `live-zero-price-e2e.test.ts` (T-23.1.3). ✅
 
 ### UC-23.3 — Two sessions must not be able to claim the same requirement id
 
@@ -1320,3 +1318,34 @@ first; this needs a decision before it is worth coding:
   the dangling case, which is how a renumber goes wrong.
 - edge: the index table and the section heading disagreeing about an id's title.
 - e2e: `pnpm test` fails on a duplicate introduced in a scratch copy of the file.
+
+**T-23.1.3 — End-to-end cover.**  `done` (2026-08-12). No new production seam was
+needed, and none was added: `createApp({ ratesOptions })` already threads
+adapters into every pricing route, and `createGcpRatesAdapter` already takes
+`apiKey` + `fetchImpl`. A fake key and a stub `fetch` drive the **live** branch —
+the one that only runs when `GCP_BILLING_API_KEY` is set in production, and which
+had therefore never been exercised here at all.
+
+Four cases in `packages/api/src/__tests__/live-zero-price-e2e.test.ts`, each
+failing for a different reason if one of the three defences is removed:
+
+- a free-allowance SKU prices at its charged tier (`0.09`) through `/v1/rates`,
+  with the free-allowance warning — pins T-23.1.1.
+- an all-free catalog leaves the verified `0.022` in place with the
+  "failed lookup, not a price drop" warning — pins T-23.2.1.
+- a catalog that states no currency is ignored, verified price retained — pins
+  T-23.1.2.
+- `POST /v1/estimates` quotes a **non-zero** line item for the zeroed meter and
+  carries the warning, which is the assertion that actually matters: the unit
+  tests prove each defence in isolation, this one proves the number a customer
+  is quoted survives the parser, the merge, the estimate and the serialiser.
+
+Verified by hand as well as in CI: the API started with `DEBUG=cost:api` serves
+`gcs-standard-storage` at `0.022` over real HTTP and emits a correlated
+request/response trace, so the debug path works when a failure needs diagnosing.
+
+Writing these caught a mistake worth recording: capability keys in the HTTP
+schema are camelCase (`auditLogs`), not the snake_case used internally
+(`audit_logs`). The first draft sent `cloud_posture` and earned a 400 — the
+schema doing its job, and a reminder that the API contract and the engine's
+internal vocabulary are deliberately separate.
