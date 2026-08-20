@@ -18,3 +18,44 @@ apps/*/node_modules/
 .claude/continuous-improvement.state.json
 .claude/continuous-improvement.config.json
 .claude/continuous-improvement/
+
+# BEGIN generated-artifacts
+# Package installs and language/tool caches - do not commit.
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.venv/
+venv/
+.env/
+.Python
+*.egg-info/
+.eggs/
+.coverage
+htmlcov/
+.turbo/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+.eslintcache
+.pnpm-store/
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.hypothesis/
+.ipynb_checkpoints/
+.webassets-cache
+.sass-cache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# END generated-artifacts
