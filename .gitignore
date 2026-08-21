@@ -87,3 +87,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 # END generated-artifacts
+.cursor/skills/
+.claude/skills/
+.ai/skills/
+.cursor/hooks.json.bak-*
+.claude/settings.json.bak-*
