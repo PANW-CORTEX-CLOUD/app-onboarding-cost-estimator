@@ -77,7 +77,3 @@ yarn-error.log*
 pnpm-debug.log*
 # END generated-artifacts
 
-# AI agent tooling (install output - never tracked)
-.cursor/
-.claude/
-.ai/
