@@ -1,6 +1,0 @@
-# Local plan-execute runtime (opt-in / generated)
-plan-execute.active
-plan-execute.status.json
-hooks/logs/
-plan-execute.next.json
-plan-execute.gaps.json
