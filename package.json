@@ -23,7 +23,7 @@
     "test:estimate-cli": "node --test scripts/lib/estimate-check.test.mjs"
   },
   "devDependencies": {
-    "@stoplight/spectral-cli": "^6.16.3",
+    "@stoplight/spectral-cli": "^6.17.0",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.3"
   },
